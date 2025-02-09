@@ -3,7 +3,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from tkinter import ttk
 import os
-from PIL import Image, ImageTk
+from PIL import Image, ImageDraw, ImageTk
 import threading
 import queue
 import random
@@ -12,16 +12,14 @@ import time
 import concurrent.futures
 import numpy as np
 
-class WebcamApp:
+class net_ready_eyes:
     def __init__(self, root):
         self.root = root
-        self.root.title("Webcam Image Recognition")
-        cv2.namedWindow("Webcam")
-        cv2.setMouseCallback("Webcam", self.mouse_callback)
+        self.root.title("Net-Ready Eyes")
         
         #choose from rectangle, polygon, or auto - to do: make this selectable from a drop down
         # default to polygon (or from a config file's default)
-        
+
         #self.detect_mode = "polygon"
         self.detect_mode = "rectangle"
         #self.detect_mode = "auto"
@@ -42,14 +40,6 @@ class WebcamApp:
         self.matched_image_path = None
         self.available_webcams = self.find_webcams()
         self.dragging_point = None # Stores which point of the polygon is being dragged
-        # Initialize polygon with 4 points (modify as needed)
-        self.polygon = np.array([
-            [100, 100],  # Top-left
-            [200, 100],  # Top-right
-            [200, 200],  # Bottom-right
-            [100, 200]   # Bottom-left
-        ], dtype=np.int32)
-        
 
         # Get the current script's directory
         script_directory = os.path.dirname(os.path.abspath(__file__))
@@ -63,13 +53,21 @@ class WebcamApp:
         # Set the current folder to the default image folder
         self.low_res_image_folder = self.default_image_folder
 
+        # Coordinates for the ROI (Region of Interest) - where the playing card sized area will be placed
+        self.roi_x = 50  # X coordinate for the top-left corner
+        self.roi_y = 50  # Y coordinate for the top-left corner
+
         # Define the size of the "playing card" area (width, height)
         self.card_width = 200
         self.card_height = 300
 
-        # Coordinates for the ROI (Region of Interest) - where the playing card sized area will be placed
-        self.roi_x = 50  # X coordinate for the top-left corner
-        self.roi_y = 50  # Y coordinate for the top-left corner
+        # Initialize polygon with 4 points (modify as needed)
+        self.polygon = np.array([
+            [self.roi_x, self.roi_y],  # Top-left
+            [self.roi_x+self.card_width, self.roi_y],  # Top-right
+            [self.roi_x+self.card_width, self.roi_y+self.card_height],  # Bottom-right
+            [self.roi_x, self.roi_y+self.card_height]   # Bottom-left
+        ], dtype=np.int32)
 
         # Create GUI components
         self.main_frame = tk.Frame(self.root)
@@ -79,9 +77,13 @@ class WebcamApp:
         self.video_frame = tk.Label(self.main_frame)
         self.video_frame.grid(row=0, column=0)
 
+        #left-click in the video_frame
         self.video_frame.bind("<ButtonPress-1>", self.on_roi_press)
+        #move while holding left-click in the video_frame
         self.video_frame.bind("<B1-Motion>", self.on_roi_drag)
+        #release left-click
         self.video_frame.bind("<ButtonRelease-1>", self.on_roi_release)
+        #move the mouse while not clicking in the video_frame
         self.video_frame.bind("<Motion>", self.on_mouse_move)
 
         # Debug log frame on the right
@@ -197,17 +199,85 @@ class WebcamApp:
             # Example: Update the ROI drawing logic based on the selected mode
             self.update_frame()
 
-    def mouse_callback(self, event, x, y, flags, param):
-        print("in mouse_callback()")
-        if event == cv2.EVENT_LBUTTONDOWN:  # Mouse click
+    def on_roi_press(self, event):
+        """Handle mouse button press on ROI."""
+        x, y = event.x, event.y
+        margin = 10  # Sensitivity for resizing
+
+        #print("Polygon points:", self.polygon)
+        print(f"in on_roi_press with x,y = {x},{y} and self.detect_mode = {self.detect_mode}")  # Debugging line
+
+        if self.detect_mode == "polygon":
+            # Check if the user clicked near a polygon point
+            print ("got here")
             for i, (px, py) in enumerate(self.polygon):
-                if abs(x - px) < 10 and abs(y - py) < 10:  # Click near a point
+                if abs(x - px) < margin and abs(y - py) < margin:  # Click near a point
                     self.dragging_point = i  # Store index of point
+                    print(f"Dragging point {i} at ({px}, {py})")  # Debugging line
                     break
-        elif event == cv2.EVENT_MOUSEMOVE and self.dragging_point is not None:
-            self.polygon[self.dragging_point] = [x, y]  # Move point
-        elif event == cv2.EVENT_LBUTTONUP:
-            self.dragging_point = None  # Stop dragging
+
+        elif self.detect_mode == "rectangle":
+            # Detect which part of ROI is clicked (corners for resizing, inside for dragging)
+            if (self.roi_x - margin <= x <= self.roi_x + margin and
+                self.roi_y - margin <= y <= self.roi_y + margin):
+                self.roi_resizing = "top_left"
+            elif (self.roi_x + self.card_width - margin <= x <= self.roi_x + self.card_width + margin and
+                self.roi_y - margin <= y <= self.roi_y + margin):
+                self.roi_resizing = "top_right"
+            elif (self.roi_x - margin <= x <= self.roi_x + margin and
+                self.roi_y + self.card_height - margin <= y <= self.roi_y + self.card_height + margin):
+                self.roi_resizing = "bottom_left"
+            elif (self.roi_x + self.card_width - margin <= x <= self.roi_x + self.card_width + margin and
+                self.roi_y + self.card_height - margin <= y <= self.roi_y + self.card_height + margin):
+                self.roi_resizing = "bottom_right"
+            elif (self.roi_x <= x <= self.roi_x + self.card_width and
+                self.roi_y <= y <= self.roi_y + self.card_height):
+                self.roi_dragging = True
+                self.roi_drag_offset = (x - self.roi_x, y - self.roi_y)
+        
+        elif self.detect_mode == "auto":
+            # No manual adjustment in auto_mode
+            return
+
+    def on_roi_drag(self, event):
+        """Handle mouse movement while dragging."""
+        x, y = event.x, event.y
+
+        if self.detect_mode == "polygon" and self.dragging_point is not None:
+            self.polygon[self.dragging_point] = [x, y]  # Move point dynamically
+
+        if self.roi_dragging:
+            self.roi_x = max(0, min(event.x - self.roi_drag_offset[0], int(self.cap.get(3)) - self.card_width))
+            self.roi_y = max(0, min(event.y - self.roi_drag_offset[1], int(self.cap.get(4)) - self.card_height))
+
+    def on_roi_release(self, event):
+        """End any dragging or resizing action."""
+        self.dragging_point = None
+        self.roi_dragging = False
+        self.roi_resizing = None
+
+    def on_mouse_move(self, event):
+        """Change cursor when near ROI edges to indicate resizing."""
+        x, y = event.x, event.y
+        margin = 10
+
+        if (self.roi_x - margin <= x <= self.roi_x + margin and
+            self.roi_y - margin <= y <= self.roi_y + margin):
+            self.video_frame.config(cursor="size_nw_se")
+        elif (self.roi_x + self.card_width - margin <= x <= self.roi_x + self.card_width + margin and
+            self.roi_y - margin <= y <= self.roi_y + margin):
+            self.video_frame.config(cursor="size_ne_sw")
+        elif (self.roi_x - margin <= x <= self.roi_x + margin and
+            self.roi_y + self.card_height - margin <= y <= self.roi_y + self.card_height + margin):
+            self.video_frame.config(cursor="size_ne_sw")
+        elif (self.roi_x + self.card_width - margin <= x <= self.roi_x + self.card_width + margin and
+            self.roi_y + self.card_height - margin <= y <= self.roi_y + self.card_height + margin):
+            self.video_frame.config(cursor="size_nw_se")
+        elif (self.roi_x <= x <= self.roi_x + self.card_width and
+            self.roi_y <= y <= self.roi_y + self.card_height):
+            self.video_frame.config(cursor="fleur")
+        else:
+            self.video_frame.config(cursor="")
 
     def find_webcams(self):
         """Find available webcams and get their descriptive names."""
@@ -279,8 +349,6 @@ class WebcamApp:
             if ret:
 
                 self.roi_color = self.match_color if self.match_occured else self.no_match_color
-                print(f"self.match_occured = {self.match_occured}")
-                print(f"self.roi_color = {self.roi_color}")
 
                 self.draw_roi_frame(frame)
                 #self.log_debug_message("in ret loop")
@@ -298,31 +366,41 @@ class WebcamApp:
                 self.root.after(self.recognition_frequency, self.update_frame)
 
     def draw_roi_frame(self, frame):
+        # Convert frame to RGB for PIL
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        image = Image.fromarray(frame_rgb)
+        draw = ImageDraw.Draw(image)
+
         if self.detect_mode == "rectangle":
-            cv2.rectangle(frame, (self.roi_x, self.roi_y),
-                            (self.roi_x + self.card_width, self.roi_y + self.card_height), self.roi_color, 3)
+            # Draw rectangle using PIL
+            draw.rectangle(
+                [(self.roi_x, self.roi_y), (self.roi_x + self.card_width, self.roi_y + self.card_height)],
+                outline=self.roi_color, width=4
+            )
 
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            image = Image.fromarray(frame_rgb)
-            
-            # Resize the frame to fit within a specified size (adjust as needed)
-            image_resized = image.resize((self.video_width, self.video_height), Image.LANCZOS)
-
-            photo = ImageTk.PhotoImage(image=image_resized)
-            self.video_frame.config(image=photo)
-            self.video_frame.image = photo
         elif self.detect_mode == "polygon":
-            # Draw polygon
-            cv2.polylines(frame, [self.polygon], isClosed=True, color=self.roi_color, thickness=2)
+            # Draw polygon outline
+            draw.polygon([tuple(point) for point in self.polygon], outline=self.roi_color, width=4)
 
+            point_radius = 7
             # Draw points for dragging
             for (px, py) in self.polygon:
-                cv2.circle(frame, (px, py), 5, (0, 0, 255), -1)
+                draw.ellipse((px - point_radius, py - point_radius, px + point_radius, py + point_radius), fill=(self.roi_color))  # Red dots
 
-            cv2.imshow("Webcam", frame)
-            cv2.waitKey(1)
         elif self.detect_mode == "auto":
             pass #to do: create automatic detect mode
+
+        # Resize for Tkinter display
+        #image_resized = image.resize((self.video_width, self.video_height), Image.LANCZOS)
+        image_resized = image
+
+        
+        # Convert back to Tkinter-compatible format
+        photo = ImageTk.PhotoImage(image=image_resized)
+
+        # Update video frame in Tkinter
+        self.video_frame.config(image=photo)
+        self.video_frame.image = photo
 
     def process_recognition_results(self):
         """ Safely update UI from the main thread. """
@@ -348,6 +426,7 @@ class WebcamApp:
         if self.matched_image_path:
             image = Image.open(self.matched_image_path)
             image_resized = image.resize((300, 419), Image.LANCZOS)
+            #image_resized = image #debugging scaling
             photo = ImageTk.PhotoImage(image=image_resized)
             self.match_frame.config(image=photo)
             self.match_frame.image = photo
@@ -443,7 +522,39 @@ class WebcamApp:
         filter_time = 0
         if self.low_res_image_folder and self.target_images:
 
-            roi_frame = frame[self.roi_y:self.roi_y + self.card_height, self.roi_x:self.roi_x + self.card_width]
+            # If in polygon mode, create a mask from the polygon
+            if self.detect_mode == "polygon" and len(self.polygon) > 2:
+                mask = np.zeros_like(frame, dtype=np.uint8)
+                # Create polygon mask
+                cv2.fillPoly(mask, [np.array(self.polygon, dtype=np.int32)], (255, 255, 255))
+
+                # Apply the mask to get the region of interest (ROI)
+                roi_frame = cv2.bitwise_and(frame, mask)
+                
+                # Get bounding box for the polygon (rectangular area surrounding the polygon)
+                mask_gray = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+                x, y, w, h = cv2.boundingRect(mask_gray)
+
+                # Extract the region inside the bounding box
+                roi_frame = roi_frame[y:y+h, x:x+w]
+
+                # Now perform a perspective transformation to map the polygon into a rectangle
+                # Define destination points for the rectangle (the corners of the new rectangle)
+                dst_pts = np.float32([[0, 0], [w-1, 0], [w-1, h-1], [0, h-1]])
+
+                # Perspective transformation matrix (source points = polygon points)
+                src_pts = np.float32(self.polygon)
+
+                # Compute the perspective transform matrix
+                M = cv2.getPerspectiveTransform(src_pts, dst_pts)
+
+                # Apply the perspective warp (re-map the polygon to the rectangle)
+                warped_roi = cv2.warpPerspective(roi_frame, M, (w, h))
+
+            else:
+                # If not in polygon mode, use the rectangle ROI
+                roi_frame = frame[self.roi_y:self.roi_y + self.card_height, self.roi_x:self.roi_x + self.card_width]
+
             #gray_frame = cv2.cvtColor(roi_frame, cv2.COLOR_BGR2GRAY)
 
             #cv2.imshow("ROI Frame", roi_frame)
@@ -452,12 +563,13 @@ class WebcamApp:
             width = 95
             height = 133
 
-            roi_frame = cv2.resize(roi_frame, (width, height))
+            # Resize to a fixed size for consistency
+            if self.detect_mode == "polygon":
+                roi_frame = cv2.resize(warped_roi, (width, height))
+            else:
+                roi_frame = cv2.resize(roi_frame, (width, height))
             
             kp2, des2 = self.orb.detectAndCompute(roi_frame, None)
-            
-            # create BFMatcher object
-            #bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
 
             #before we look through any images, reset our scores to zero
             match_path = None
@@ -538,7 +650,6 @@ class WebcamApp:
             self.log_debug_message(f"Image recognition took {elapsed_time:.4f} seconds for {len(self.target_images)} images.")
             self.log_debug_message(f"knn: {knn_time:.4f}, filter: {filter_time:.4f}")
 
-
     def log_debug_message(self, message):
         """ Log debug messages to the Text widget. """
         self.debug_log.config(state=tk.NORMAL)  # Enable text widget for editing
@@ -550,50 +661,14 @@ class WebcamApp:
         """ Export the matched image to OBS as an image source. """ 
         # OBS integration (if needed) can go here
 
-    # def on_roi_press(self, event):
-    #     """ Capture the starting point of the ROI move or resize action. """
-    #     # Check if user clicked inside the ROI for moving or resizing
-    #     if self.roi_x <= event.x <= self.roi_x + self.card_width and self.roi_y <= event.y <= self.roi_y + self.card_height:
-    #         self.roi_dragging = True
-    #         self.roi_drag_offset = (event.x - self.roi_x, event.y - self.roi_y)
-
-    def on_roi_drag(self, event):
-        if self.roi_dragging:
-            self.roi_x = max(0, min(event.x - self.roi_drag_offset[0], int(self.cap.get(3)) - self.card_width))
-            self.roi_y = max(0, min(event.y - self.roi_drag_offset[1], int(self.cap.get(4)) - self.card_height))
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = net_ready_eyes(root)
+    root.mainloop()
 
 
-    def on_roi_release(self, event):
-        """ End the ROI dragging action. """
-        self.roi_dragging = False
 
-    def on_roi_press(self, event):
-        """Handle mouse button press on ROI."""
-        x, y = event.x, event.y
-        margin = 10  # Sensitivity for resizing
-
-        # Detect which part of ROI is clicked (corners for resizing, inside for dragging)
-        if (self.roi_x - margin <= x <= self.roi_x + margin and
-            self.roi_y - margin <= y <= self.roi_y + margin):
-            self.roi_resizing = "top_left"
-        elif (self.roi_x + self.card_width - margin <= x <= self.roi_x + self.card_width + margin and
-            self.roi_y - margin <= y <= self.roi_y + margin):
-            self.roi_resizing = "top_right"
-        elif (self.roi_x - margin <= x <= self.roi_x + margin and
-            self.roi_y + self.card_height - margin <= y <= self.roi_y + self.card_height + margin):
-            self.roi_resizing = "bottom_left"
-        elif (self.roi_x + self.card_width - margin <= x <= self.roi_x + self.card_width + margin and
-            self.roi_y + self.card_height - margin <= y <= self.roi_y + self.card_height + margin):
-            self.roi_resizing = "bottom_right"
-        elif (self.roi_x <= x <= self.roi_x + self.card_width and
-            self.roi_y <= y <= self.roi_y + self.card_height):
-            self.roi_dragging = True
-            self.roi_drag_offset = (x - self.roi_x, y - self.roi_y)
-        else:
-            self.roi_resizing = None
-            self.roi_dragging = False
-
-    # def on_roi_drag(self, event):
+# def on_roi_drag(self, event):
     #     """Handle dragging or resizing of the ROI, optimized for performance."""
     #     x, y = event.x, event.y
     #     changed = False  # Flag to track if the ROI has changed
@@ -664,32 +739,3 @@ class WebcamApp:
     #     """Reset dragging and resizing flags."""
     #     self.roi_dragging = False
     #     self.roi_resizing = None
-
-    def on_mouse_move(self, event):
-        """Change cursor when near ROI edges to indicate resizing."""
-        x, y = event.x, event.y
-        margin = 10
-
-        if (self.roi_x - margin <= x <= self.roi_x + margin and
-            self.roi_y - margin <= y <= self.roi_y + margin):
-            self.video_frame.config(cursor="size_nw_se")
-        elif (self.roi_x + self.card_width - margin <= x <= self.roi_x + self.card_width + margin and
-            self.roi_y - margin <= y <= self.roi_y + margin):
-            self.video_frame.config(cursor="size_ne_sw")
-        elif (self.roi_x - margin <= x <= self.roi_x + margin and
-            self.roi_y + self.card_height - margin <= y <= self.roi_y + self.card_height + margin):
-            self.video_frame.config(cursor="size_ne_sw")
-        elif (self.roi_x + self.card_width - margin <= x <= self.roi_x + self.card_width + margin and
-            self.roi_y + self.card_height - margin <= y <= self.roi_y + self.card_height + margin):
-            self.video_frame.config(cursor="size_nw_se")
-        elif (self.roi_x <= x <= self.roi_x + self.card_width and
-            self.roi_y <= y <= self.roi_y + self.card_height):
-            self.video_frame.config(cursor="fleur")
-        else:
-            self.video_frame.config(cursor="")
-
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = WebcamApp(root)
-    root.mainloop()
