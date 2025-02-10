@@ -2,15 +2,19 @@ import cv2
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from tkinter import ttk
-import os
 from PIL import Image, ImageDraw, ImageTk
+from pygrabber.dshow_graph import FilterGraph
+import numpy as np
+
+import os
 import threading
 import queue
 import random
-from pygrabber.dshow_graph import FilterGraph
 import time
 import concurrent.futures
-import numpy as np
+
+from image_matcher.detect_image import find_cards
+from utils import utils.utils
 
 class net_ready_eyes:
     def __init__(self, root):
@@ -42,14 +46,14 @@ class net_ready_eyes:
         self.dragging_point = None # Stores which point of the polygon is being dragged
 
         # Get the current script's directory
-        script_directory = os.path.dirname(os.path.abspath(__file__))
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         
         # Set the default image folders relative to the script directory - low resolution images for parsing/matching,
         # and high resolution files for displaying once a match is found.
         # IMPORTANT: The file names in these folders must match exactly. I have found Windows PowerToys Image Resizer to be helpful for scaling files:
         # https://learn.microsoft.com/en-us/windows/powertoys/install
-        self.default_image_folder = os.path.join(script_directory, 'low_res_images')  # Folder named 'images'
-        self.high_res_image_folder = os.path.join(script_directory, 'high_res_images')  # Folder named 'images'
+        self.default_image_folder = os.path.join(BASE_DIR, 'low_res_images')  # Folder named 'images'
+        self.high_res_image_folder = os.path.join(BASE_DIR, 'high_res_images')  # Folder named 'images'
         # Set the current folder to the default image folder
         self.low_res_image_folder = self.default_image_folder
 
@@ -356,6 +360,7 @@ class net_ready_eyes:
                 # Start recognition in a separate thread if not already running
                 if self.recognition_thread is None or not self.recognition_thread.is_alive():
                     #self.log_debug_message("alive!")
+                    self.recognition_thread = threading.Thread(target=find_cards())
                     self.recognition_thread = threading.Thread(target=self.perform_image_recognition, args=(frame,))
                     self.recognition_thread.daemon = True
                     self.recognition_thread.start()
