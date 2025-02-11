@@ -14,7 +14,7 @@ import time
 import concurrent.futures
 
 from image_matcher.detect_image import find_cards
-from utils import utils.utils
+import utils.const as const
 
 class net_ready_eyes:
     def __init__(self, root):
@@ -52,10 +52,10 @@ class net_ready_eyes:
         # and high resolution files for displaying once a match is found.
         # IMPORTANT: The file names in these folders must match exactly. I have found Windows PowerToys Image Resizer to be helpful for scaling files:
         # https://learn.microsoft.com/en-us/windows/powertoys/install
-        self.default_image_folder = os.path.join(BASE_DIR, 'low_res_images')  # Folder named 'images'
-        self.high_res_image_folder = os.path.join(BASE_DIR, 'high_res_images')  # Folder named 'images'
+        self.default_image_folder = const.HIGH_RES_DIR  # Folder named 'images'
+        self.high_res_image_folder = const.HIGH_RES_DIR  # Folder named 'images'
         # Set the current folder to the default image folder
-        self.low_res_image_folder = self.default_image_folder
+        self.low_res_image_folder = const.LOW_RES_DIR
 
         # Coordinates for the ROI (Region of Interest) - where the playing card sized area will be placed
         self.roi_x = 50  # X coordinate for the top-left corner

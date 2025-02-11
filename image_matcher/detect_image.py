@@ -3,13 +3,11 @@ import numpy as np
 
 from image_matcher.draw_image import draw_text_and_save_card_image
 from image_matcher.hash_matcher import find_minimum_hash_difference
-from image_matcher.models import ImageUpload
-from image_matcher.models.image_upload import CardListingDetails
 
 
 def find_cards(image, hash_pool):
     contours = find_contours(image.copy())
-    card_models = []
+    # card_models = []
     for n, contour in enumerate(contours):
         rectangle_points = _get_rectangle_points_from_contour(contour)
         #Transform the detected card region into a rectangle
@@ -23,25 +21,19 @@ def find_cards(image, hash_pool):
                                                             label_card_image, n)
             del card_image
             del label_card_image
-            details = CardListingDetails.objects.create(
-                scryfall_id=card['id'], name=card['name'], set=card['set'])
-            card_models.append(ImageUpload.objects.create(image_input=card_image_path,
-                                                          image_name=card['name'],
-                                                          listing_details=details))
+            # details = CardListingDetails.objects.create(
+            #     scryfall_id=card['id'], name=card['name'], set=card['set'])
+            # card_models.append(ImageUpload.objects.create(image_input=card_image_path,
+            #                                               image_name=card['name'],
+            #                                               listing_details=details))
         else:
             del card_image
-    return card_models
+    return card_image_path
 
 
 def _possible_match(card_name, diff):
-    """This may seem odd, but aether spellbomb is the default card for cards
-    which have a hard time matching correctly. In the case where the card actually
-    is aether spellbomb, we don't care, because nobody is selling aether spellbomb on
-    ebay and it's easier to just consider it incorrectly matched than it is to write
-    the code which determines whether the card was a mismatch.
-    """
-
-    return card_name != "Aether Spellbomb" and diff < 450
+    if diff < 450:
+        return card_name
 
 
 def _get_rectangle_points_from_contour(contour):
@@ -50,7 +42,6 @@ def _get_rectangle_points_from_contour(contour):
 
 def _four_point_transform(image, pts, for_display=False):
     """Transform a quadrilateral section of an image into a rectangular area.
-
     Parameters
     ----------
     image : Image
@@ -62,7 +53,6 @@ def _four_point_transform(image, pts, for_display=False):
     Image
         Transformed rectangular image
     """
-
     rect = _order_points(pts)
 
     spacing_around_card = 0
