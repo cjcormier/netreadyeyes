@@ -3,3 +3,10 @@
 *.psd
 ./debug.log
 ./device.log
+image_matcher/__pycache__/__init__.cpython-313.pyc
+image_matcher/__pycache__/detect_image.cpython-313.pyc
+image_matcher/__pycache__/draw_image.cpython-313.pyc
+image_matcher/__pycache__/hash_matcher.cpython-313.pyc
+image_matcher/__pycache__/hash.cpython-313.pyc
+utils/__pycache__/__init__.cpython-313.pyc
+utils/__pycache__/const.cpython-313.pyc

@@ -15,6 +15,7 @@ import concurrent.futures
 
 from image_matcher.detect_image import find_cards
 import utils.const as const
+from image_matcher.hash import generate_hash_pool
 
 class net_ready_eyes:
     def __init__(self, root):
@@ -359,9 +360,9 @@ class net_ready_eyes:
 
                 # Start recognition in a separate thread if not already running
                 if self.recognition_thread is None or not self.recognition_thread.is_alive():
-                    #self.log_debug_message("alive!")
-                    self.recognition_thread = threading.Thread(target=find_cards())
-                    self.recognition_thread = threading.Thread(target=self.perform_image_recognition, args=(frame,))
+                    # Pass the frame, hash_pool we've calculated for the cards in the pool, 
+                    # and a pointer to the recognition queue to the find_cards function
+                    self.recognition_thread = threading.Thread(target=find_cards(frame, self.hash_pool, self.recognition_queue))
                     self.recognition_thread.daemon = True
                     self.recognition_thread.start()
 
@@ -445,72 +446,7 @@ class net_ready_eyes:
         """ Let the user select a folder of images. """
         folder_path = filedialog.askdirectory(initialdir=self.low_res_image_folder)
         if folder_path:
-            start_time = time.time()
-            self.low_res_image_folder = folder_path
-            self.folder_label.config(text=f"Current Folder: {self.low_res_image_folder}")
-            self.target_images.clear()
-
-            def process_image(path):
-                target_image = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-                rotated_stats = []
-                for angle in [0, 90, 180, 270]:
-                    rotated_target = self.rotate_image(target_image, angle)
-                    rotated_stats.append(self.orb.detectAndCompute(rotated_target, None))
-                return rotated_stats
-
-            paths = os.listdir(folder_path)
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=self.worker_threads) as executor:
-                future2path = {}
-                for image_path in paths:
-                    if image_path.endswith('.png') or image_path.endswith('.jpg'):
-                        full_path = os.path.join(self.low_res_image_folder, image_path)
-                        future2path[executor.submit(process_image, full_path)] = image_path
-
-                for future in concurrent.futures.as_completed(future2path):
-                    image_path = future2path[future]
-                    try:
-                        image_stats = future.result()
-                    except Exception as exc:
-                        print(f'{image_path} generated an exception: {exc}')
-                    else:
-                        self.target_images.append((image_path, image_stats))
-
-            if not self.target_images:
-                messagebox.showerror("Error", "No PNG or JPG images found in the selected folder.")
-
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            self.log_debug_message(f"Loaded {len(self.target_images)} images in {elapsed_time:.4f}s.")
-            #randomize the order to remove selection bias
-            random.shuffle(self.target_images)
-
-    def draw_and_pause(self, image1, keypoints1, image2, keypoints2, matches):
-        """ Draws matches and pauses execution until a key is pressed """
-        matched_image = cv2.drawMatches(image1, keypoints1, image2, keypoints2, matches, None,
-                                        flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-
-        # Show the matched features
-        cv2.imshow("Matches", matched_image)
-
-        # Wait for user input to continue (press any key)
-        print("Press any key to continue to the next image...")
-        cv2.waitKey(0)  # Wait indefinitely until a key is pressed
-        cv2.destroyAllWindows()
-
-    def draw(self, image1, keypoints1, image2, keypoints2, matches):
-        """ Draws matches and pauses execution until a key is pressed """
-
-        #destroy the last window
-        cv2.destroyAllWindows()
-
-        matched_image = cv2.drawMatches(image1, keypoints1, image2, keypoints2, matches, None,
-                                        flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-
-        # Show the matched features
-        cv2.imshow("Matches", matched_image)
-
-        # Wait for user input to continue (press any key)
+            self.hash_pool = generate_hash_pool(folder_path)
 
     def rotate_image(self, image, angle):
         """ Rotate image by a specified angle. """
@@ -519,141 +455,6 @@ class net_ready_eyes:
         matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
         rotated = cv2.warpAffine(image, matrix, (w, h))
         return rotated
-
-    def perform_image_recognition(self, frame):
-        """ Perform image recognition in a separate thread. """
-        start_time = time.time()
-        knn_time = 0
-        filter_time = 0
-        if self.low_res_image_folder and self.target_images:
-
-            # If in polygon mode, create a mask from the polygon
-            if self.detect_mode == "polygon" and len(self.polygon) > 2:
-                mask = np.zeros_like(frame, dtype=np.uint8)
-                # Create polygon mask
-                cv2.fillPoly(mask, [np.array(self.polygon, dtype=np.int32)], (255, 255, 255))
-
-                # Apply the mask to get the region of interest (ROI)
-                roi_frame = cv2.bitwise_and(frame, mask)
-                
-                # Get bounding box for the polygon (rectangular area surrounding the polygon)
-                mask_gray = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
-                x, y, w, h = cv2.boundingRect(mask_gray)
-
-                # Extract the region inside the bounding box
-                roi_frame = roi_frame[y:y+h, x:x+w]
-
-                # Now perform a perspective transformation to map the polygon into a rectangle
-                # Define destination points for the rectangle (the corners of the new rectangle)
-                dst_pts = np.float32([[0, 0], [w-1, 0], [w-1, h-1], [0, h-1]])
-
-                # Perspective transformation matrix (source points = polygon points)
-                src_pts = np.float32(self.polygon)
-
-                # Compute the perspective transform matrix
-                M = cv2.getPerspectiveTransform(src_pts, dst_pts)
-
-                # Apply the perspective warp (re-map the polygon to the rectangle)
-                warped_roi = cv2.warpPerspective(roi_frame, M, (w, h))
-
-            else:
-                # If not in polygon mode, use the rectangle ROI
-                roi_frame = frame[self.roi_y:self.roi_y + self.card_height, self.roi_x:self.roi_x + self.card_width]
-
-            #gray_frame = cv2.cvtColor(roi_frame, cv2.COLOR_BGR2GRAY)
-
-            #cv2.imshow("ROI Frame", roi_frame)
-            #cv2.waitKey(1) #Ensures the OpenCV window refreshes
-
-            width = 95
-            height = 133
-
-            # Resize to a fixed size for consistency
-            if self.detect_mode == "polygon":
-                roi_frame = cv2.resize(warped_roi, (width, height))
-            else:
-                roi_frame = cv2.resize(roi_frame, (width, height))
-            
-            kp2, des2 = self.orb.detectAndCompute(roi_frame, None)
-
-            #before we look through any images, reset our scores to zero
-            match_path = None
-            lowest_dist = 300.0 #use a high number to start - best matches are the lowest distance
-
-            def process_stat(stat, d2):
-                inner_dist = lowest_dist  # use a high number to start - best matches are the lowest distance
-                knn_t = 0
-                filter_t = 0
-
-                for kp1, des1 in stat:
-                    if des1 is None or des2 is None:
-                        continue  # Avoid running knnMatch() on None values
-                    probe_start = time.time()
-                    matches = self.flann.knnMatch(des1, d2, k=min(2, len(d2)))
-                    probe_end = time.time()
-                    knn_t += probe_end - probe_start
-
-                    # # Apply Lowe's ratio test (helps remove false matches)
-                    probe_start = time.time()
-                    for match in matches:
-                        if len(match) < 2:
-                            continue  # skip if there aren't at least two matches
-                        m, n = match[:2]  # Unpack only the first two matches
-
-                        # check to see if m is significantly better than n, and if so, consider it a good match
-                        # the lower the threshold, the stricter the test
-                        if m.distance < 0.75 * n.distance:  # adjust ratio as needed
-                            if m.distance < inner_dist:
-                                # set the new best score (smallest distance)
-                                inner_dist = m.distance
-
-                    probe_end = time.time()
-                    filter_t += probe_end - probe_start
-                return inner_dist, knn_t, filter_t
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=self.worker_threads) as executor:
-                future2path = {}
-                for (image, stats) in self.target_images:
-                    future2path[executor.submit(process_stat, stats, des2)] = image
-
-                for future in concurrent.futures.as_completed(future2path):
-                    image_path = future2path[future]
-                    try:
-                        dist, knn, f = future.result()
-                    except Exception as exc:
-                        print(f'{image_path} generated an exception: {exc}')
-                    else:
-                        knn_time += knn
-                        filter_time += f
-                        if dist < lowest_dist:
-                            lowest_dist = dist
-                            match_path = image_path
-
-            if match_path and lowest_dist < self.match_threshold:
-                if match_path.strip().startswith("alt_"):
-                    match_path = match_path[4:]
-
-                #self.draw_and_pause(target_image, kp1, roi_frame, kp2, match)
-                high_res_path = os.path.join(self.high_res_image_folder, match_path)
-                self.log_debug_message(f"Match detected (distance of {lowest_dist}) - adding {match_path} to recognition_queue!")
-                # Ensure the high-resolution file exists before adding it to the queue
-                if os.path.exists(high_res_path):
-                    self.log_debug_message(f"Match detected - using high-res version: {high_res_path}")
-                    self.recognition_queue.put(high_res_path)
-                else:
-                    low_res_path = os.path.join(self.low_res_image_folder, match_path)
-                    if os.path.exists(high_res_path):
-                        self.log_debug_message(f"High-resolution version not found ({high_res_path}), using low-res: {low_res_path}")
-                        self.recognition_queue.put(low_res_path)
-                    else:
-                        self.log_debug_message(f"No path found")
-
-
-            #print how long parsing all of the images took
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            self.log_debug_message(f"Image recognition took {elapsed_time:.4f} seconds for {len(self.target_images)} images.")
-            self.log_debug_message(f"knn: {knn_time:.4f}, filter: {filter_time:.4f}")
 
     def log_debug_message(self, message):
         """ Log debug messages to the Text widget. """
@@ -672,75 +473,105 @@ if __name__ == "__main__":
     root.mainloop()
 
 
+    # def perform_image_recognition(self, frame):
+    #     """ Perform image recognition in a separate thread. """
+    #     start_time = time.time()
+    #     knn_time = 0
+    #     filter_time = 0
+    #     if self.hash_pool:
 
-# def on_roi_drag(self, event):
-    #     """Handle dragging or resizing of the ROI, optimized for performance."""
-    #     x, y = event.x, event.y
-    #     changed = False  # Flag to track if the ROI has changed
+            
+    #         #gray_frame = cv2.cvtColor(roi_frame, cv2.COLOR_BGR2GRAY)
 
-    #     if self.roi_dragging:
-    #         new_x = x - self.roi_drag_offset[0]
-    #         new_y = y - self.roi_drag_offset[1]
+    #         #cv2.imshow("ROI Frame", roi_frame)
+    #         #cv2.waitKey(1) #Ensures the OpenCV window refreshes
 
-    #         # Prevent ROI from moving off-screen
-    #         if 0 <= new_x <= self.video_width - self.card_width:
-    #             self.roi_x = new_x
-    #             changed = True
-    #         if 0 <= new_y <= self.video_height - self.card_height:
-    #             self.roi_y = new_y
-    #             changed = True
+    #         width = 95
+    #         height = 133
 
-    #     elif self.roi_resizing:
-    #         min_size = 50  # Prevent ROI from being too small
+    #         # Resize to a fixed size for consistency
+    #         if self.detect_mode == "polygon":
+    #             roi_frame = cv2.resize(warped_roi, (width, height))
+    #         else:
+    #             roi_frame = cv2.resize(roi_frame, (width, height))
+            
+    #         kp2, des2 = self.orb.detectAndCompute(roi_frame, None)
 
-    #         if self.roi_resizing == "top_left":
-    #             new_width = self.card_width + (self.roi_x - x)
-    #             new_height = self.card_height + (self.roi_y - y)
-    #             if new_width >= min_size and 0 <= x < self.roi_x + self.card_width:
-    #                 self.roi_x = x
-    #                 self.card_width = new_width
-    #                 changed = True
-    #             if new_height >= min_size and 0 <= y < self.roi_y + self.card_height:
-    #                 self.roi_y = y
-    #                 self.card_height = new_height
-    #                 changed = True
+    #         #before we look through any images, reset our scores to zero
+    #         match_path = None
+    #         lowest_dist = 300.0 #use a high number to start - best matches are the lowest distance
 
-    #         elif self.roi_resizing == "top_right":
-    #             new_width = x - self.roi_x
-    #             new_height = self.card_height + (self.roi_y - y)
-    #             if new_width >= min_size and x <= self.video_width:
-    #                 self.card_width = new_width
-    #                 changed = True
-    #             if new_height >= min_size and 0 <= y < self.roi_y + self.card_height:
-    #                 self.roi_y = y
-    #                 self.card_height = new_height
-    #                 changed = True
+    #         def process_stat(stat, d2):
+    #             inner_dist = lowest_dist  # use a high number to start - best matches are the lowest distance
+    #             knn_t = 0
+    #             filter_t = 0
 
-    #         elif self.roi_resizing == "bottom_left":
-    #             new_width = self.card_width + (self.roi_x - x)
-    #             new_height = y - self.roi_y
-    #             if new_width >= min_size and 0 <= x < self.roi_x + self.card_width:
-    #                 self.roi_x = x
-    #                 self.card_width = new_width
-    #                 changed = True
-    #             if new_height >= min_size and y <= self.video_height:
-    #                 self.card_height = new_height
-    #                 changed = True
+    #             for kp1, des1 in stat:
+    #                 if des1 is None or des2 is None:
+    #                     continue  # Avoid running knnMatch() on None values
+    #                 probe_start = time.time()
+    #                 matches = self.flann.knnMatch(des1, d2, k=min(2, len(d2)))
+    #                 probe_end = time.time()
+    #                 knn_t += probe_end - probe_start
 
-    #         elif self.roi_resizing == "bottom_right":
-    #             new_width = x - self.roi_x
-    #             new_height = y - self.roi_y
-    #             if new_width >= min_size and x <= self.video_width:
-    #                 self.card_width = new_width
-    #                 changed = True
-    #             if new_height >= min_size and y <= self.video_height:
-    #                 self.card_height = new_height
-    #                 changed = True
+    #                 # # Apply Lowe's ratio test (helps remove false matches)
+    #                 probe_start = time.time()
+    #                 for match in matches:
+    #                     if len(match) < 2:
+    #                         continue  # skip if there aren't at least two matches
+    #                     m, n = match[:2]  # Unpack only the first two matches
 
-    #     if changed:
-    #         self.update_frame()  # Only update frame if something changed
+    #                     # check to see if m is significantly better than n, and if so, consider it a good match
+    #                     # the lower the threshold, the stricter the test
+    #                     if m.distance < 0.75 * n.distance:  # adjust ratio as needed
+    #                         if m.distance < inner_dist:
+    #                             # set the new best score (smallest distance)
+    #                             inner_dist = m.distance
 
-    # def on_roi_release(self, event):
-    #     """Reset dragging and resizing flags."""
-    #     self.roi_dragging = False
-    #     self.roi_resizing = None
+    #                 probe_end = time.time()
+    #                 filter_t += probe_end - probe_start
+    #             return inner_dist, knn_t, filter_t
+
+    #         with concurrent.futures.ThreadPoolExecutor(max_workers=self.worker_threads) as executor:
+    #             future2path = {}
+    #             for (image, stats) in self.target_images:
+    #                 future2path[executor.submit(process_stat, stats, des2)] = image
+
+    #             for future in concurrent.futures.as_completed(future2path):
+    #                 image_path = future2path[future]
+    #                 try:
+    #                     dist, knn, f = future.result()
+    #                 except Exception as exc:
+    #                     print(f'{image_path} generated an exception: {exc}')
+    #                 else:
+    #                     knn_time += knn
+    #                     filter_time += f
+    #                     if dist < lowest_dist:
+    #                         lowest_dist = dist
+    #                         match_path = image_path
+
+    #         if match_path and lowest_dist < self.match_threshold:
+    #             if match_path.strip().startswith("alt_"):
+    #                 match_path = match_path[4:]
+
+    #             #self.draw_and_pause(target_image, kp1, roi_frame, kp2, match)
+    #             high_res_path = os.path.join(self.high_res_image_folder, match_path)
+    #             self.log_debug_message(f"Match detected (distance of {lowest_dist}) - adding {match_path} to recognition_queue!")
+    #             # Ensure the high-resolution file exists before adding it to the queue
+    #             if os.path.exists(high_res_path):
+    #                 self.log_debug_message(f"Match detected - using high-res version: {high_res_path}")
+    #                 self.recognition_queue.put(high_res_path)
+    #             else:
+    #                 low_res_path = os.path.join(self.low_res_image_folder, match_path)
+    #                 if os.path.exists(high_res_path):
+    #                     self.log_debug_message(f"High-resolution version not found ({high_res_path}), using low-res: {low_res_path}")
+    #                     self.recognition_queue.put(low_res_path)
+    #                 else:
+    #                     self.log_debug_message(f"No path found")
+
+
+    #         #print how long parsing all of the images took
+    #         end_time = time.time()
+    #         elapsed_time = end_time - start_time
+    #         self.log_debug_message(f"Image recognition took {elapsed_time:.4f} seconds for {len(self.target_images)} images.")
+    #         self.log_debug_message(f"knn: {knn_time:.4f}, filter: {filter_time:.4f}")

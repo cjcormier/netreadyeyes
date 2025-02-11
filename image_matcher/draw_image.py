@@ -20,3 +20,30 @@ def minimum_height(rectangle_points):
 
 def minimum_width(rectangle_points):
     return min(rectangle_points[0][0], rectangle_points[1][0])
+
+def draw_and_pause(self, image1, keypoints1, image2, keypoints2, matches):
+    """ Draws matches and pauses execution until a key is pressed """
+    matched_image = cv2.drawMatches(image1, keypoints1, image2, keypoints2, matches, None,
+                                    flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+
+    # Show the matched features
+    cv2.imshow("Matches", matched_image)
+
+    # Wait for user input to continue (press any key)
+    print("Press any key to continue to the next image...")
+    cv2.waitKey(0)  # Wait indefinitely until a key is pressed
+    cv2.destroyAllWindows()
+
+def draw(self, image1, keypoints1, image2, keypoints2, matches):
+    """ Draws matches and pauses execution until a key is pressed """
+
+    #destroy the last window
+    cv2.destroyAllWindows()
+
+    matched_image = cv2.drawMatches(image1, keypoints1, image2, keypoints2, matches, None,
+                                    flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+
+    # Show the matched features
+    cv2.imshow("Matches", matched_image)
+
+    # Wait for user input to continue (press any key)

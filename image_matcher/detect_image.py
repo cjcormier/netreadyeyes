@@ -1,37 +1,25 @@
 import cv2
 import numpy as np
+import pandas as pd
 
-from image_matcher.hash_matcher import find_minimum_hash_difference
+from image_matcher.hash import find_minimum_hash_difference
 
-
-def find_cards(image, hash_pool):
+def find_cards(image, hash_pool, recognition_queue):
     contours = find_contours(image.copy())
-    # card_models = []
     for n, contour in enumerate(contours):
         rectangle_points = _get_rectangle_points_from_contour(contour)
-        #Transform the detected card region into a rectangle
         card_image = _four_point_transform(image, rectangle_points)
         
-        card, diff = find_minimum_hash_difference(card_image, hash_pool)
-        if _possible_match(card['name'], diff):
-            label_card_image = _four_point_transform(image, rectangle_points,
-                                                     for_display=True)
-            card_image_path = f'{card['name']}.png'
-            del card_image
-            del label_card_image
-            # details = CardListingDetails.objects.create(
-            #     scryfall_id=card['id'], name=card['name'], set=card['set'])
-            # card_models.append(ImageUpload.objects.create(image_input=card_image_path,
-            #                                               image_name=card['name'],
-            #                                               listing_details=details))
-        else:
-            del card_image
-    return card_image_path
+        # Unpack card and diff from find_minimum_hash_difference
+        card_row, diff = find_minimum_hash_difference(card_image, hash_pool)
+        
+        if _possible_match(diff):
+            # Send the result back to the recognition_queue
+            recognition_queue.put(card_image_path)
 
-
-def _possible_match(card_name, diff):
-    if diff < 450:
-        return card_name
+def _possible_match(diff):
+    if diff < 450: #To-do: make this number based on the threshold slider
+        return True
 
 
 def _get_rectangle_points_from_contour(contour):
