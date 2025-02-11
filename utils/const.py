@@ -4,6 +4,7 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(APP_DIR)
 HIGH_RES_DIR = os.path.join(BASE_DIR, "high_res_images")
 LOW_RES_DIR = os.path.join(BASE_DIR, "low_res_images")
+TEST_IMAGE_DIR = os.path.join(BASE_DIR, "test_images")
 INSTALLED_APPS = [
     'bootstrap4',
     'crispy_forms',

@@ -1,3 +1,4 @@
+import cv2
 import imagehash as ih
 import numpy as np
 from PIL import Image
@@ -8,14 +9,17 @@ import os
 import time
 import concurrent.futures
 
-def _compute_image_hash(path, hash_size=32):
+from utils.utils import convert_image_to_opencv, convert_image_to_pil
+
+def _compute_image_hash(image_path, hash_size=32):
     """Compute a perceptual hash for an image."""
+    #image_path should be a path to a png or jpg image
     try:
-        image = Image.open(path).convert("RGB")
-        image_hash = ih.phash(image, hash_size=hash_size).hash.flatten()
-        return (path, image_hash)
+        image_object = Image.open(image_path)
+        image_hash = ih.phash(image_object, hash_size=hash_size).hash.flatten()
+        return (image_path, image_hash)
     except Exception as e:
-        print(f"Error processing {path}: {e}")
+        print(f"Error processing {image_object}: {e}")
         return None
 
 def generate_hash_pool(path):
@@ -29,10 +33,11 @@ def generate_hash_pool(path):
     if not image_paths:
         messagebox.showerror("Error", "No PNG or JPG images found in the selected folder.")
         return
-
+    
     hash_pool = []
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+
         future_to_path = {executor.submit(_compute_image_hash, img_path): img_path for img_path in image_paths}
         
         for future in concurrent.futures.as_completed(future_to_path):
@@ -51,13 +56,11 @@ def generate_hash_pool(path):
     return hash_pool_df
 
 
-def find_minimum_hash_difference(image, hash_pool_df, hash_size=32):
-    # If the input image is a PIL Image, convert it to a NumPy array
-    if isinstance(image, Image.Image):  
-        image = np.array(image)
-        
-    image_object = Image.fromarray(image.astype('uint8'), 'RGB')
-    card_hash = _compute_image_hash(image_object, hash_size)
+def find_minimum_hash_difference(query_image_path, hash_pool_df, hash_size=32):
+    #image = convert_image_to_opencv(image)
+    print("called find_minimum_hash_difference")
+    #image_object = Image.fromarray(image.astype('uint8'), 'RGB')
+    card_path, card_hash = _compute_image_hash(query_image_path, hash_size)
     hash_pool = pd.DataFrame(hash_pool_df)
     #add a new in the hash pool to store the difference between the computed hash and each stored hash
     hash_pool['diff'] = hash_pool['card_hash_%d' % hash_size]
