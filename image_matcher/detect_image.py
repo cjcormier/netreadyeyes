@@ -54,14 +54,14 @@ def find_cards(query_image_path, hash_pool, recognition_queue):
         rectangle_points_int = rectangle_points.astype(int)
 
         # Draw the rectangle (quadrilateral) on the image
-        cv2.polylines(query_image_copy, [rectangle_points_int], isClosed=True, color=(0, 255, 0), thickness=2)
+        cv2.polylines(image_cropped, [rectangle_points_int], isClosed=True, color=(0, 255, 0), thickness=2)
 
         # You can also draw individual points (optional, for visual verification)
         for point in rectangle_points_int:
-            cv2.circle(query_image_copy, tuple(point), 5, (0, 0, 255), -1)
+            cv2.circle(image_cropped, tuple(point), 5, (0, 0, 255), -1)
 
         # Show the image with the rectangle overlayed
-        cv2.imshow(f"Rectangle Overlay - {query_image_path}", query_image_copy)
+        cv2.imshow(f"Rectangle Overlay - {query_image_path}", image_cropped)
             
         # cv2.imshow(query_image_path, query_image_resized)
 
@@ -268,6 +268,13 @@ def find_contours(image, ksize=3, # Smooth out noise but keep card edges
                   thresh_c=10, # Remove some noise
                   kernel_size=(5, 5) # Strengthen edges for better contour detection
                   ):
+
+# def find_contours(image, ksize=1, # Smooth out noise but keep card edges
+#                   thresh_max_value=255, # Keep maximum threshold intensity
+#                   thresh_block_size=37, # Adapt to local contrast without over-smoothing - must be odd
+#                   thresh_c=19, # Remove some noise
+#                   kernel_size=(0, 0) # Strengthen edges for better contour detection
+#                   ):
 
     print("in find_contours")
     image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)

@@ -8,11 +8,15 @@ import numpy as np
 
 import os
 import threading
+import json
 import queue
+
 from image_matcher.detect_image import find_cards
 from image_matcher.hash import generate_hash_pool
 
+
 # Initialize variables
+
 
 #opencv uses BGR (Blue, Green, Red) by default
 match_color = (132, 255, 0) #green
