@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 
-from image_matcher.draw_image import draw_text_and_save_card_image
 from image_matcher.hash_matcher import find_minimum_hash_difference
 
 
@@ -17,8 +16,7 @@ def find_cards(image, hash_pool):
         if _possible_match(card['name'], diff):
             label_card_image = _four_point_transform(image, rectangle_points,
                                                      for_display=True)
-            card_image_path = draw_text_and_save_card_image(card['name'],
-                                                            label_card_image, n)
+            card_image_path = f'{card['name']}.png'
             del card_image
             del label_card_image
             # details = CardListingDetails.objects.create(
