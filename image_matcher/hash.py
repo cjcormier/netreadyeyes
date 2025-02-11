@@ -52,6 +52,10 @@ def generate_hash_pool(path):
 
 
 def find_minimum_hash_difference(image, hash_pool_df, hash_size=32):
+    # If the input image is a PIL Image, convert it to a NumPy array
+    if isinstance(image, Image.Image):  
+        image = np.array(image)
+        
     image_object = Image.fromarray(image.astype('uint8'), 'RGB')
     card_hash = _compute_image_hash(image_object, hash_size)
     hash_pool = pd.DataFrame(hash_pool_df)
