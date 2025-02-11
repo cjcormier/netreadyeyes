@@ -10,12 +10,14 @@ def find_cards(image, hash_pool, recognition_queue):
         rectangle_points = _get_rectangle_points_from_contour(contour)
         card_image = _four_point_transform(image, rectangle_points)
         
-        # Unpack card and diff from find_minimum_hash_difference
-        card_row, diff = find_minimum_hash_difference(card_image, hash_pool)
-        
+        # Unpack card path and diff from find_minimum_hash_difference
+        min_dist_df, diff = find_minimum_hash_difference(card_image, hash_pool)
+    
+        print(f"find_minimum_hash_difference returned {min_dist_df['name']} with a diff of {diff}.")
+
         if _possible_match(diff):
             # Send the result back to the recognition_queue
-            recognition_queue.put(card_image_path)
+            recognition_queue.put(min_dist_df['name'])
 
 def _possible_match(diff):
     if diff < 450: #To-do: make this number based on the threshold slider
