@@ -27,7 +27,7 @@ def find_cards(query_image,
     if display_mode == "thresholding":
         cv2.imshow('thresholding', thresh_image)
 
-    card_sized_imgs = extract_card_bounding_boxes(query_image, thresh_image)
+    card_sized_imgs = extract_card_bounding_boxes(query_image, thresh_image, display_mode)
 
     print(f"found {len(card_sized_imgs)} card sized boxes in this image")
     
@@ -55,94 +55,7 @@ def find_cards(query_image,
         # key = cv2.waitKey(0) & 0xFF
         # hashes.append(compute_image_hash(candidate))
 
-# def find_cards(query_image_path, hash_pool, recognition_queue):
-#     print("called find_cards")
-#     query_image = cv2.imread(query_image_path)
-
-#     height, width = query_image.shape[:2]
     
-#     # Define cropping margins (adjust as needed)
-#     left_margin = 235  # Exclude pixels from the left
-#     right_margin = 250  # Exclude pixels from the right
-#     top_margin = 0 # Exclude pixels from the top
-#     bottom_margin = 0 # Exclude pixels from the bottom
-
-#     # Crop image (excluding left & right margins)
-#     image_cropped = query_image[top_margin:height - bottom_margin, left_margin:width - right_margin]
-
-#     # Display the image using OpenCV
-#     #query_image_resized = cv2.resize(query_image, (1280, 720), interpolation=cv2.INTER_LANCZOS4)
-#     # Convert to grayscale for drawing
-#     # query_image_copy = query_image.copy()
-
-#     # cv2.imshow(f"query_image - {query_image}", query_image)
-#     # cv2.imshow(f"query_image_copy - {query_image_copy}", query_image_copy)
-#     # print(f"query_image_path = {query_image_path}")
-#     # print(f"query_image = {query_image}")
-#     # print(f"query_image_copy = {query_image_copy}")
-
-#     # Wait for a key press to close the window
-#     cv2.waitKey(0)
-
-#     # Close all OpenCV windows
-#     cv2.destroyAllWindows()
-
-#     #query_image = Image.open(query_image_path)
-#     #contours = find_contours(image_cropped)
-#     contours = find_contours_hsv(image_cropped)
-
-#     for n, contour in enumerate(contours):
-#         print(f"in loop: n = {n}, contour = {contour}")
-
-#         # Get the rectangle points from the contour
-#         rectangle_points = _get_rectangle_points_from_contour(contour)
-
-#         print(f"rectangle_points = {rectangle_points}")
-
-#         # Draw the rectangle on the query_image_resized
-#         # Convert points to integer for drawing (they may be floats after _get_rectangle_points_from_contour())
-#         rectangle_points_int = rectangle_points.astype(int)
-
-#         # Draw the rectangle (quadrilateral) on the image
-#         cv2.polylines(image_cropped, [rectangle_points_int], isClosed=True, color=(0, 255, 0), thickness=2)
-
-#         # You can also draw individual points (optional, for visual verification)
-#         for point in rectangle_points_int:
-#             cv2.circle(image_cropped, tuple(point), 5, (0, 0, 255), -1)
-
-#         # Show the image with the rectangle overlayed
-#         cv2.imshow(f"Rectangle Overlay - {query_image_path}", image_cropped)
-            
-#         # cv2.imshow(query_image_path, query_image_resized)
-
-#         # Wait for a key press to close the window
-#         cv2.waitKey(0)
-
-#         # Close all OpenCV windows
-#         cv2.destroyAllWindows()
-
-#         card_image = _four_point_transform(query_image, rectangle_points)
-#         card, diff = find_minimum_hash_difference(card_image, hash_pool)
-#         if _possible_match(diff):
-
-#             print(f"find_minimum_hash_difference returned {card['name']} with a diff of {diff}.")
-
-#             # # Display the image using OpenCV
-#             # cv2.imshow(card['name'], card_image)
-
-#             # # Wait for a key press to close the window
-#             # cv2.waitKey(0)
-
-#             # # Close all OpenCV windows
-#             # cv2.destroyAllWindows()
-
-#             # Unpack card path and diff from find_minimum_hash_difference
-#             min_dist_df, diff =  (card_image, hash_pool)
-
-#             # Send the result back to the recognition_queue
-#             recognition_queue.put(min_dist_df['name'])      
-    
-
 def _possible_match(diff):
     if diff < 450: #To-do: make this number based on the threshold slider
         return True
@@ -247,71 +160,6 @@ def rotate_image(max_height, max_width, transformed_image):
     return transformed_image
 
 
-
-# ksize = (Kernel Size for Median Blur)
-# Used in: cv2.medianBlur(image_gray, ksize)
-
-# Effect:
-# Controls how much the image is smoothed before edge detection.
-# Larger values (e.g., ksize=7, 9) remove more noise but might blur out small details.
-# Smaller values (e.g., ksize=3) preserve details but keep more noise.
-# Tuning Advice:
-# If small noise is interfering with contour detection, try increasing ksize (e.g., 7 or 9).
-# If contours are disappearing, reduce ksize (e.g., 3 or 5).
-
-# thresh_max_value (Maximum Threshold Value)
-# Used in: cv2.adaptiveThreshold(image_blur, thresh_max_value, ...)
-
-# Effect:
-# Sets the maximum intensity assigned to pixels that pass the thresholding condition.
-# Usually left at 255 (max intensity for 8-bit images).
-# Lower values will make thresholding less aggressive.
-# Tuning Advice:
-# Keep it at 255 unless you need a softer binary mask.
-# If you see too much white noise, you might reduce it slightly (e.g., 200-230).
-
-
-# def find_contours(image, ksize=5, thresh_max_value=255, thresh_block_size=199, thresh_c=5,
-# #                   kernel_size=(3, 3)):
-
-# 3️⃣ thresh_block_size (Neighborhood Size for Adaptive Thresholding)
-# 🔹 Used in: cv2.adaptiveThreshold(..., thresh_block_size, thresh_c)
-
-# Effect:
-# Defines the size of the local region (block) used to calculate the threshold for each pixel.
-# Must be an odd number (e.g., 3, 5, 199).
-# Larger values result in smoother thresholding.
-# Smaller values make thresholding more localized, which helps with small details.
-# Tuning Advice:
-# If some contours are lost, reduce thresh_block_size (e.g., from 199 → 51).
-# If background noise appears too much, increase thresh_block_size (e.g., 199 or more).
-# 4️⃣ thresh_c (Constant Subtracted in Adaptive Thresholding)
-# 🔹 Used in: cv2.adaptiveThreshold(..., thresh_block_size, thresh_c)
-
-# Effect:
-# A fine-tuning parameter that shifts the threshold up or down.
-# Positive values make the threshold more aggressive, turning more pixels black.
-# Negative values make the threshold less aggressive, keeping more pixels white.
-# Tuning Advice:
-# If you are missing contours, decrease thresh_c (e.g., 5 → 3).
-# If too much background noise is detected, increase thresh_c (e.g., 5 → 10).
-# 5️⃣ kernel_size (Morphological Kernel Size)
-# 🔹 Used in:
-
-# python
-# Copy
-# Edit
-# kernel = np.ones(kernel_size, np.uint8)
-# image_dilate = cv2.dilate(image_thresh, kernel, iterations=1)
-# image_erode = cv2.erode(image_dilate, kernel, iterations=1)
-# Effect:
-# Defines the size of the structuring element used for morphological operations (dilate & erode).
-# Larger kernels (e.g., (5,5)) remove small noise but can distort small contours.
-# Smaller kernels (e.g., (3,3)) preserve details but may not clean up noise well.
-# Tuning Advice:
-# If small noise remains, increase kernel size (e.g., (3,3) → (5,5)).
-# If contours become too thick or connected, reduce kernel size.
-
 def find_contours(image, ksize=3, # Smooth out noise but keep card edges
                   thresh_max_value=255, # Keep maximum threshold intensity
                   block_size=18, # Adapt to local contrast without over-smoothing - must be odd
@@ -319,7 +167,7 @@ def find_contours(image, ksize=3, # Smooth out noise but keep card edges
                   kernel_size=(5, 5) # Strengthen edges for better contour detection
                   ):
 
-# Convert to grayscale if it's a color image
+    # Convert to grayscale if it's a color image
     if len(image.shape) == 3:  # Check if the image has multiple channels
         image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     else:
@@ -381,86 +229,6 @@ def find_contours(image, ksize=3, # Smooth out noise but keep card edges
     return cnts_sort, cnt_is_card
 
 
-
-    # Draw all contours on the image to visualize
-    image_contours = image.copy()
-    cv2.drawContours(image_contours, contours, -1, (0, 255, 0), 2)
-
-    # cv2.imshow("Detected Contours", image_contours)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
-
-    # if contours:
-    #     #print(f"counters = {contours}")
-    #     print("contours was not empty")
-    #     rectangular_contours = find_rectangular_contours(contours, hierarchy)
-    #     if rectangular_contours:
-    #         print(f"rectangular_counters = {contours}")
-    #         print("rectangular_contours was not empty")
-    #         return rectangular_contours
-    #     else:
-    #         print("No rectangular_contours found")        
-    
-    # print("No contours found")
-    # return []
-    return image_contours, contours
-
-
-def interactive_threshold(image, thresh=127, thresh_max_value=255, block_size=101, offset_c=10):
-    # Convert to grayscale if it's a color image
-    if len(image.shape) == 3:  # Check if the image has multiple channels
-        image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    else:
-        image_gray = image  # If already grayscale, use it directly
-
-    print(f"interactive_threshold called with thresh = {thresh}, thresh_max_value = {thresh_max_value}")
-    #_, image_thresh = cv2.threshold(image_gray, thresh, thresh_max_value, cv2.THRESH_BINARY)
-    image_thresh = cv2.adaptiveThreshold(image_gray, thresh_max_value,
-                                         cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,
-                                         block_size, offset_c)
-
-    # contours, _ = cv2.findContours(threshold, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    # # Draw contours on the original color image
-    # image_contours = image.copy()
-    # cv2.drawContours(image_contours, contours, -1, (0, 255, 0), 2)
-
-    return image_gray, image_thresh
-
-def find_contours_hsv(image, ksize=3, thresh_max_value=255, block_size=101, offset_c=10, kernel_size=(5, 5)):
-    # Ensure ksize is always odd and greater than 1
-    if ksize % 2 == 0:
-        ksize += 1  # Make ksize odd
-    if ksize <= 1:
-        ksize = 3  # Set ksize to the minimum valid odd value
-
-    # Apply median blur to the color image (no grayscale conversion)
-    image_blur = cv2.medianBlur(image, ksize)
-
-    # Convert the blurred image to grayscale just for thresholding (adaptive thresholding works best in grayscale)
-    image_hsv = cv2.cvtColor(image_blur, cv2.COLOR_BGR2HSV)
-
-    # Split the HSV image into its individual channels (Hue, Saturation, Value)
-    h, s, v = cv2.split(image_hsv)
-
-    # Apply adaptive thresholding on the V channel (or try S channel, depending on your need)
-    image_thresh = cv2.adaptiveThreshold(v, thresh_max_value,
-                                         cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV,
-                                         block_size, offset_c)
-
-    # # Perform morphological operations (closing and opening)
-    # kernel = np.ones(kernel_size, np.uint8)
-    # image_morph = cv2.morphologyEx(image_thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
-    # image_morph = cv2.morphologyEx(image_morph, cv2.MORPH_OPEN, kernel, iterations=1)
-
-    # Find contours
-    contours, _ = cv2.findContours(image_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # Draw contours on the original color image
-    image_contours = image.copy()
-    cv2.drawContours(image_contours, contours, -1, (0, 255, 0), 2)
-
-    return image_contours, contours
-
 def find_rectangular_contours(contours, hierarchy):
     print("in find_rectangular_contours")
     stack = _get_stack(hierarchy)
@@ -500,47 +268,6 @@ def _threshold_size_bounded_by(area, min_area=5000, max_area=200000):
     print(f"Contour area: {area}")
     return min_area <= area <= max_area
 
-# def find_cards(thresh_image):
-#     """Finds all card-sized contours in a thresholded camera image.
-#     Returns the number of cards, and a list of card contours sorted
-#     from largest to smallest."""
-
-#     # Find contours and sort their indices by contour size
-#     dummy,cnts,hier = cv2.findContours(thresh_image,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-#     index_sort = sorted(range(len(cnts)), key=lambda i : cv2.contourArea(cnts[i]),reverse=True)
-
-#     # If there are no contours, do nothing
-#     if len(cnts) == 0:
-#         return [], []
-    
-#     # Otherwise, initialize empty sorted contour and hierarchy lists
-#     cnts_sort = []
-#     hier_sort = []
-#     cnt_is_card = np.zeros(len(cnts),dtype=int)
-
-#     # Fill empty lists with sorted contour and sorted hierarchy. Now,
-#     # the indices of the contour list still correspond with those of
-#     # the hierarchy list. The hierarchy array can be used to check if
-#     # the contours have parents or not.
-#     for i in index_sort:
-#         cnts_sort.append(cnts[i])
-#         hier_sort.append(hier[0][i])
-
-#     # Determine which of the contours are cards by applying the
-#     # following criteria: 1) Smaller area than the maximum card size,
-#     # 2), bigger area than the minimum card size, 3) have no parents,
-#     # and 4) have four corners
-
-#     for i in range(len(cnts_sort)):
-#         size = cv2.contourArea(cnts_sort[i])
-#         peri = cv2.arcLength(cnts_sort[i],True)
-#         approx = cv2.approxPolyDP(cnts_sort[i],0.01*peri,True)
-        
-#         if ((size < CARD_MAX_AREA) and (size > CARD_MIN_AREA)
-#             and (hier_sort[i][3] == -1) and (len(approx) == 4)):
-#             cnt_is_card[i] = 1
-
-#     return cnts_sort, cnt_is_card
 
 def preprocess_card(contour, image):
     """Uses contour to find information about the query card. Isolates rank
@@ -615,32 +342,10 @@ def preprocess_image(image, thresh_max_value=255, block_size=101, offset_c=10, k
     """Returns a grayed, blurred, and adaptively thresholded camera image."""
 
     gray = cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
-    
     blur = cv2.GaussianBlur(gray,kernel_size,stddev)
-    # ksize = (Kernel Size for Median Blur)
-    # blur = cv2.medianBlur(gray, ksize)
-    #blur = cv2.bilateralFilter(gray, d, sigma_color, sigma_space)  # d = 9, sigmaColor = 75, sigmaSpace = 75
-
-    # The best threshold level depends on the ambient lighting conditions.
-    # For bright lighting, a high threshold must be used to isolate the cards
-    # from the background. For dim lighting, a low threshold must be used.
-    # To make the card detector independent of lighting conditions, the
-    # following adaptive threshold method is used.
-    #
-    # A background pixel in the center top of the image is sampled to determine
-    # its intensity. The adaptive threshold is set at 50 (THRESH_ADDER) higher
-    # than that. This allows the threshold to adapt to the lighting conditions.
-    img_w, img_h = np.shape(image)[:2]
-    bkg_level = gray[int(img_h/100)][int(img_w/2)]
-    
-    # print(f"bkg_level = {bkg_level}")
-    #thresh_level = bkg_level + BKG_THRESH
-
-    #retval, thresh = cv2.threshold(blur,thresh_level,255,cv2.THRESH_BINARY)
     thresh = cv2.adaptiveThreshold(blur, thresh_max_value,
                                   cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, block_size, offset_c)
     
-
     return thresh
 
 
@@ -658,7 +363,7 @@ def extract_card_bounding_boxes(image, thresh, display_mode=None):
     #we'll want to sort their indices by contour size
 
     # DEBUG - display contours that we found
-    if display_mode == "unfiltered_contours":
+    if display_mode == "unfiltered contours":
         image_contours = image.copy()
         cv2.drawContours(image_contours, contours, -1, (0, 255, 0), 2)
         cv2.imshow("Unfiltered Contours", image_contours)
@@ -668,7 +373,7 @@ def extract_card_bounding_boxes(image, thresh, display_mode=None):
     filtered_contours = filter_contours(contours)
     
     # DEBUG - display filtered contours
-    if display_mode == "filtered_contours":
+    if display_mode == "filtered contours":
         image_filtered_contours = image.copy()
         cv2.drawContours(image_filtered_contours, filtered_contours, -1, (0, 255, 0), 2)
         cv2.imshow("Filtered Contours", image_filtered_contours)
@@ -693,6 +398,7 @@ def extract_card_bounding_boxes(image, thresh, display_mode=None):
     
     return card_images
 
+
 def filter_contours(contours, min_area=1000, max_area=50000, area_perimeter_ratio_thresh=19):
     """ Filter contours based on area and area-to-perimeter ratio. """
     filtered_contours = []
@@ -707,10 +413,7 @@ def filter_contours(contours, min_area=1000, max_area=50000, area_perimeter_rati
         area_perimeter_ratio = area / perimeter
         
         if min_area < area < max_area and area_perimeter_ratio > area_perimeter_ratio_thresh:
-            print(f"qualitifed a contour with area = {area}, area_perimeter_ratio = {area_perimeter_ratio}")
+            print(f"qualified a contour with area = {area}, area_perimeter_ratio = {area_perimeter_ratio}")
             filtered_contours.append(contour) 
     
-    # print(f"len(contours) = {len(contours)}") 
-    # print(f"len(filtered_contours) = {len(filtered_contours)}")
-
     return filtered_contours

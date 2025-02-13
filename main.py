@@ -20,17 +20,15 @@ class net_ready_eyes:
         self.root.title("Net-Ready Eyes")
         
         #choose from rectangle, polygon, or auto - to do: make this selectable from a drop down
-        # default to polygon (or from a config file's default)
-
         #self.detect_mode = "polygon"
         self.detect_mode = "rectangle"
         #self.detect_mode = "auto"
 
         #default display mode (what shows up in the video frame)
         self.display_mode = "thresholding"
-        #self.display_mode = "unfiltered_contours"
-        #self.display_mode = "filtered_contours"
-        #self.display_mode = "rectangular_contours"
+        #self.display_mode = "unfiltered contours"
+        #self.display_mode = "filtered contours"
+        #self.display_mode = "rectangular contours"
 
         # Initialize variables
         self.vid_stream = None  # This will be set after webcam selection
@@ -71,8 +69,8 @@ class net_ready_eyes:
             self.hash_pool = generate_hash_pool(self.low_res_image_folder)
 
         # Coordinates for the ROI (Region of Interest) - where the playing card sized area will be placed
-        self.roi_x = 0  # X coordinate for the top-left corner
-        self.roi_y = 0  # Y coordinate for the top-left corner
+        self.roi_x = 2418  # X coordinate for the top-left corner
+        self.roi_y = 846  # Y coordinate for the top-left corner
 
         # Define the size of the "region of interest"
         self.roi_width = 400
@@ -84,16 +82,16 @@ class net_ready_eyes:
         self.card_width = 300
         self.card_height = 419
 
-        self.video_width = 640  # Default width, update dynamically if needed
-        self.video_height = 480  # Default height, update dynamically if needed
+        self.video_width = 1280  # Default width, update dynamically if needed
+        self.video_height = 720  # Default height, update dynamically if needed
 
-        # # Initialize polygon with 4 points (modify as needed)
-        # self.polygon = np.array([
-        #     [self.roi_x, self.roi_y],  # Top-left
-        #     [self.roi_x+self.roi_width, self.roi_y],  # Top-right
-        #     [self.roi_x+self.roi_width, self.roi_y+self.roi_height],  # Bottom-right
-        #     [self.roi_x, self.roi_y+self.roi_height]   # Bottom-left
-        # ], dtype=np.int32)
+        # Initialize polygon with 4 points (modify as needed)
+        self.polygon = np.array([
+            [self.roi_x, self.roi_y],  # Top-left
+            [self.roi_x+self.roi_width, self.roi_y],  # Top-right
+            [self.roi_x+self.roi_width, self.roi_y+self.roi_height],  # Bottom-right
+            [self.roi_x, self.roi_y+self.roi_height]   # Bottom-left
+        ], dtype=np.int32)
 
         # Create GUI components
         self.main_frame = tk.Frame(self.root)
@@ -104,11 +102,11 @@ class net_ready_eyes:
         self.video_frame.grid(row=0, column=0)
 
         #left-click in the video_frame
-        self.video_frame.bind("<ButtonPress-1>", self.on_roi_press)
+        self.video_frame.bind("<ButtonPress-1>", self.on_mouse_press)
         #move while holding left-click in the video_frame
-        self.video_frame.bind("<B1-Motion>", self.on_roi_drag)
+        self.video_frame.bind("<B1-Motion>", self.on_mouse_drag)
         #release left-click
-        self.video_frame.bind("<ButtonRelease-1>", self.on_roi_release)
+        self.video_frame.bind("<ButtonRelease-1>", self.on_mouse_release)
         #move the mouse while not clicking in the video_frame
         self.video_frame.bind("<Motion>", self.on_mouse_move)
 
@@ -132,16 +130,16 @@ class net_ready_eyes:
         self.webcam_label = tk.Label(self.root, text="Select Webcam:")
         self.webcam_combobox = ttk.Combobox(self.root, values=self.available_webcams)
 
-        # # Dropdown menu to select detect_mode
-        # self.detect_mode_label = tk.Label(self.root, text="Detection Mode:")
-        # self.detect_mode_label.pack(pady=5)
+        # Dropdown menu to select detect_mode
+        self.detect_mode_label = tk.Label(self.root, text="Detection Mode:")
+        self.detect_mode_label.pack(pady=5)
 
-        # self.detect_mode_combobox = ttk.Combobox(self.root, values=["polygon", "rectangle", "auto"])
-        # self.detect_mode_combobox.set(self.detect_mode)  # populate the box with the current value
-        # self.detect_mode_combobox.pack(pady=5)
+        self.detect_mode_combobox = ttk.Combobox(self.root, values=["polygon", "rectangle", "auto"])
+        self.detect_mode_combobox.set(self.detect_mode)  # populate the box with the current value
+        self.detect_mode_combobox.pack(pady=5)
 
-        # # Bind the combobox change event to update detect_mode
-        # self.detect_mode_combobox.bind("<<ComboboxSelected>>", self.on_detect_mode_change)
+        # Bind the combobox change event to update detect_mode
+        self.detect_mode_combobox.bind("<<ComboboxSelected>>", self.on_detect_mode_change)
 
         
         # Dropdown menu to select what is displayed in the video frame
@@ -149,7 +147,7 @@ class net_ready_eyes:
         self.display_mode_label = tk.Label(self.root, text="Display Mode:")
         self.display_mode_label.pack(pady=5)
 
-        self.display_mode_combobox = ttk.Combobox(self.root, values=["thresholding", "unfiltered contours", "filtered contours", "rectangular_contours"])
+        self.display_mode_combobox = ttk.Combobox(self.root, values=["none", "thresholding", "unfiltered contours", "filtered contours", "rectangular_contours"])
         self.display_mode_combobox.set(self.display_mode)  # populate the box with the current value
         self.display_mode_combobox.pack(pady=5)
 
@@ -189,7 +187,7 @@ class net_ready_eyes:
         self.freq_label.pack()
 
         self.freq_slider = tk.Scale(self.root, from_=10, to_=2000, orient=tk.HORIZONTAL, label="Frequency (ms)", command=self.update_frequency)
-        self.freq_slider.set(100)  # Default frequency is 100 ms (10 calls per second)
+        self.freq_slider.set(500)  # Default frequency in milliseconds
         self.freq_slider.pack()
 
         # Default value for the frequency (in milliseconds)
@@ -249,57 +247,108 @@ class net_ready_eyes:
         # Example: Update the ROI drawing logic based on the selected mode
         self.update_frame()
 
-    def on_roi_press(self, event):
-        """Handle mouse button press on ROI."""
-        x, y = event.x * self.scale_x, event.y * self.scale_y  # Scale click position
-        margin = 10 * self.scale_x  # Adjust margin sensitivity
 
-        #print("Polygon points:", self.polygon)
-        print(f"in on_roi_press with x,y = {x},{y} and self.detect_mode = {self.detect_mode}")  # Debugging line
-
-        if self.detect_mode == "polygon":
-            # Check if the user clicked near a polygon point
-            for i, (px, py) in enumerate(self.polygon):
-                if abs(x - px) < margin and abs(y - py) < margin:  # Click near a point
-                    self.dragging_point = i  # Store index of point
-                    print(f"Dragging point {i} at ({px}, {py})")  # Debugging line
-                    break
-
-        elif self.detect_mode == "rectangle":
-            # Detect which part of ROI is clicked (corners for resizing, inside for dragging)
-            if (self.roi_x - margin <= x <= self.roi_x + margin and
-                self.roi_y - margin <= y <= self.roi_y + margin):
-                self.roi_resizing = "top_left"
-            elif (self.roi_x + self.roi_width - margin <= x <= self.roi_x + self.roi_width + margin and
-                self.roi_y - margin <= y <= self.roi_y + margin):
-                self.roi_resizing = "top_right"
-            elif (self.roi_x - margin <= x <= self.roi_x + margin and
-                self.roi_y + self.roi_height - margin <= y <= self.roi_y + self.roi_height + margin):
-                self.roi_resizing = "bottom_left"
-            elif (self.roi_x + self.roi_width - margin <= x <= self.roi_x + self.roi_width + margin and
-                self.roi_y + self.roi_height - margin <= y <= self.roi_y + self.roi_height + margin):
-                self.roi_resizing = "bottom_right"
-            elif (self.roi_x <= x <= self.roi_x + self.roi_width and
-                self.roi_y <= y <= self.roi_y + self.roi_height):
-                self.roi_dragging = True
-                self.roi_drag_offset = (x - self.roi_x, y - self.roi_y)
+    def on_mouse_press(self, event):
+        """Determine if resizing or moving the whole ROI."""
         
-        elif self.detect_mode == "auto":
-            # No manual adjustment in auto_mode
-            return
+        # Scale event coordinates
+        x = event.x * self.scale_x
+        y = event.y * self.scale_y
+        
+        margin = 10  # Margin for resizing detection
 
-    def on_roi_drag(self, event):
-        """Handle mouse movement while dragging."""
-        x, y = event.x * self.scale_x, event.y * self.scale_y  # Scale mouse coordinates
+        # Check for resizing on edges/corners
+        if (self.roi_x - margin <= x <= self.roi_x + margin and
+            self.roi_y - margin <= y <= self.roi_y + margin):
+            self.resizing_direction = "nw"
+        elif (self.roi_x + self.roi_width - margin <= x <= self.roi_x + self.roi_width + margin and
+            self.roi_y - margin <= y <= self.roi_y + margin):
+            self.resizing_direction = "ne"
+        elif (self.roi_x - margin <= x <= self.roi_x + margin and
+            self.roi_y + self.roi_height - margin <= y <= self.roi_y + self.roi_height + margin):
+            self.resizing_direction = "sw"
+        elif (self.roi_x + self.roi_width - margin <= x <= self.roi_x + self.roi_width + margin and
+            self.roi_y + self.roi_height - margin <= y <= self.roi_y + self.roi_height + margin):
+            self.resizing_direction = "se"
+        elif (self.roi_x <= x <= self.roi_x + self.roi_width and
+            self.roi_y - margin <= y <= self.roi_y + margin):
+            self.resizing_direction = "top"
+        elif (self.roi_x <= x <= self.roi_x + self.roi_width and
+            self.roi_y + self.roi_height - margin <= y <= self.roi_y + self.roi_height + margin):
+            self.resizing_direction = "bottom"
+        elif (self.roi_x - margin <= x <= self.roi_x + margin and
+            self.roi_y <= y <= self.roi_y + self.roi_height):
+            self.resizing_direction = "left"
+        elif (self.roi_x + self.roi_width - margin <= x <= self.roi_x + self.roi_width + margin and
+            self.roi_y <= y <= self.roi_y + self.roi_height):
+            self.resizing_direction = "right"
+        elif (self.roi_x <= x <= self.roi_x + self.roi_width and
+            self.roi_y <= y <= self.roi_y + self.roi_height):
+            self.resizing_direction = "move"  # Entire ROI should move
+        else:
+            self.resizing_direction = None
 
-        if self.detect_mode == "polygon" and self.dragging_point is not None:
-            self.polygon[self.dragging_point] = [x, y]  # Move point dynamically
+        # Store starting position
+        self.start_x, self.start_y = x, y
 
-        if self.roi_dragging:
-            self.roi_x = max(0, min(x - self.roi_drag_offset[0], int(self.vid_stream.get(3)) - self.roi_width))
-            self.roi_y = max(0, min(y - self.roi_drag_offset[1], int(self.vid_stream.get(4)) - self.roi_height))
 
-    def on_roi_release(self, event):
+    def on_mouse_drag(self, event):
+        """Resize or move ROI dynamically as the mouse is dragged."""
+        
+        if self.resizing_direction is None:
+            return  # Not resizing or moving
+
+        # Scale event coordinates
+        x = event.x * self.scale_x
+        y = event.y * self.scale_y
+
+        dx = x - self.start_x
+        dy = y - self.start_y
+
+        if self.resizing_direction == "move":  # Moving the whole ROI
+            self.roi_x += dx
+            self.roi_y += dy
+        elif self.resizing_direction == "nw":  # Top-left corner
+            self.roi_x += dx
+            self.roi_width -= dx
+            self.roi_y += dy
+            self.roi_height -= dy
+        elif self.resizing_direction == "ne":  # Top-right corner
+            self.roi_width += dx
+            self.roi_y += dy
+            self.roi_height -= dy
+        elif self.resizing_direction == "sw":  # Bottom-left corner
+            self.roi_x += dx
+            self.roi_width -= dx
+            self.roi_height += dy
+        elif self.resizing_direction == "se":  # Bottom-right corner
+            self.roi_width += dx
+            self.roi_height += dy
+        elif self.resizing_direction == "top":  # Top edge
+            self.roi_y += dy
+            self.roi_height -= dy
+        elif self.resizing_direction == "bottom":  # Bottom edge
+            self.roi_height += dy
+        elif self.resizing_direction == "left":  # Left edge
+            self.roi_x += dx
+            self.roi_width -= dx
+        elif self.resizing_direction == "right":  # Right edge
+            self.roi_width += dx
+
+        # Ensure ROI stays within bounds
+        self.roi_x = max(0, self.roi_x)
+        self.roi_y = max(0, self.roi_y)
+        self.roi_width = max(10, self.roi_width)  # Prevent shrinking too small
+        self.roi_height = max(10, self.roi_height)
+
+        self.start_x, self.start_y = x, y  # Update starting point
+
+        self.update_display()  # Redraw with updated ROI
+
+    def on_mouse_release(self, event):
+        
+        self.log_debug_message(f"ROI moved to position ({self.roi_x},{self.roi_y})")
+    
         """End any dragging or resizing action."""
         self.dragging_point = None
         self.roi_dragging = False
@@ -313,9 +362,6 @@ class net_ready_eyes:
         y = event.y * self.scale_y
         
         margin = 30
-
-        print(f"self.roi_x = {self.roi_x}, mouse position x (scaled) = {x}")
-        print(f"self.roi_y = {self.roi_y}, mouse position y (scaled) = {y}")
 
         # Corner resizing
         if (self.roi_x - margin <= x <= self.roi_x + margin and
@@ -432,9 +478,6 @@ class net_ready_eyes:
                 roi_frame = frame[roi_y:roi_y + roi_height, roi_x:roi_x + roi_width]
                 #roi_frame = frame[self.roi_y:self.roi_y + self.roi_height, self.roi_x:self.roi_x + self.roi_width]
 
-                # Debugging: Print cropped frame size
-                print(f"Cropped ROI size: {roi_frame.shape}")
-
                 self.roi_color = self.match_color if self.match_occured else self.no_match_color
 
                 
@@ -488,15 +531,10 @@ class net_ready_eyes:
         elif self.detect_mode == "auto":
             pass #to do: create automatic detect mode
 
-        print(f"image.size = {image.size}")
-
         # Resize for Tkinter display
         image_resized = image.resize((self.video_width, self.video_height), Image.LANCZOS)
 
-        print(f"image_resized.size = {image_resized.size}")
-        #image_resized = image
-
-        
+       
         # Convert back to Tkinter-compatible format
         photo = ImageTk.PhotoImage(image=image_resized)
 
