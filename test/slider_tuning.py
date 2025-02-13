@@ -1,112 +1,167 @@
 import cv2
 import numpy as np
 
+from image_matcher.detect_image import *
+from image_matcher.hash import *
+
 # Initialize global variables for slider values
-thresh_block_size = 101
-thresh_c = 10
-ksize = 3
-kernel_size = (5, 5)
+thresh=127
+thresh_max_value = 255
+block_size = 26
+offset_c = 5
+ksize = 4
+kernel_size_single = 3
+stddev = 0
+d = 9
+sigma_color = 75
+sigma_space = 75
 
 # Load image
-image = cv2.imread("C:\\Users\\erich\\net_ready_eyes\\media\\test_images\\table_capture2.png")  # Change to your image path
+image = cv2.imread("C:\\Users\\erich\\net_ready_eyes\\media\\test_images\\table_capture2.png")  # Change to your image pathf
 
+height, width = image.shape[:2]
 
-# Convert image to grayscale
-image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+# Define cropping margins (adjust as needed)
+left_margin = 235  # Exclude pixels from the left
+right_margin = 690  # Exclude pixels from the right
+top_margin = 0 # Exclude pixels from the top
+bottom_margin = 0 # Exclude pixels from the bottom
 
-# Create the window and sliders
+playmats = []
+
+# Crop image (excluding left & right margins)
+playmats.append(image[top_margin:height - bottom_margin, left_margin:width - right_margin])
+
+# Define cropping margins (adjust as needed)
+left_margin = 690  # Exclude pixels from the left
+right_margin = 250  # Exclude pixels from the right
+top_margin = 0 # Exclude pixels from the top
+bottom_margin = 0 # Exclude pixels from the bottom
+
+playmats.append(image[top_margin:height - bottom_margin, left_margin:width - right_margin])
+
+thresh_playmats = [None] * len(playmats)  # Creates a list of the right size
+hashes = [None] * len(playmats)  # Creates a list of the right size
+
+# for mat in playmats:
+#     cv2.imshow('Image', mat)
+#     # Wait for a key press
+#     key = cv2.waitKey(0) & 0xFF
+
 def nothing(x):
     pass
 
 # Create a window to show the image and add sliders for parameters
-cv2.namedWindow('Contour Detection')
+cv2.namedWindow('Image')
+
+# Threshold Max Value
+cv2.createTrackbar('Thresh Max Value', 'Image', thresh_max_value, 255, nothing)
 
 # Threshold Block Size (must be odd)
-cv2.createTrackbar('Thresh Block Size', 'Contour Detection', thresh_block_size, 255, nothing)
+cv2.createTrackbar('Block Size', 'Image', block_size, 500, nothing)
 
 # Threshold C value
-cv2.createTrackbar('Thresh C', 'Contour Detection', thresh_c, 50, nothing)
+cv2.createTrackbar('Offset C', 'Image', offset_c, 110, nothing)
 
-# Kernel Size (blur size)
-cv2.createTrackbar('Ksize', 'Contour Detection', ksize, 9, nothing)
+# Ksize value
+cv2.createTrackbar('Ksize', 'Image', ksize, 40, nothing)
 
-# Kernel Size for Morphological operations
-cv2.createTrackbar('Kernel Size', 'Contour Detection', 5, 10, nothing)
+# Kernel size value
+cv2.createTrackbar('Kernel Size', 'Image', kernel_size_single, 40, nothing)
+
+# d size value
+cv2.createTrackbar('d', 'Image', d, 100, nothing)
+
+# sigmaColor size value
+cv2.createTrackbar('SigmaColor', 'Image', sigma_color, 200, nothing)
+
+# sigmaSpace size value
+cv2.createTrackbar('SigmaSpace', 'Image', sigma_space, 200, nothing)
 
 
-def find_contours(image, ksize=3, thresh_max_value=255, thresh_block_size=101, thresh_c=10, kernel_size=(5, 5)):
-    # Convert the image to grayscale and apply median blur
-    image_blur = cv2.medianBlur(image, ksize)
+# Get current values from the sliders
+thresh_max_value = cv2.getTrackbarPos('Thresh Max Value', 'Image')
 
-    # Apply adaptive thresholding
-    image_thresh = cv2.adaptiveThreshold(image_blur, thresh_max_value,
-                                         cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV,
-                                         thresh_block_size, thresh_c)
+block_size = cv2.getTrackbarPos('Block Size', 'Image')
 
-    # Perform morphological operations (closing and opening)
-    kernel = np.ones(kernel_size, np.uint8)
-    image_morph = cv2.morphologyEx(image_thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
-    image_morph = cv2.morphologyEx(image_morph, cv2.MORPH_OPEN, kernel, iterations=1)
+# Enforce the odd condition
+if block_size % 2 == 0:
+    block_size += 1
 
-    # Find contours
-    contours, _ = cv2.findContours(image_morph, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+# Ensure it's greater than 1
+if block_size <= 1:
+    block_size = 3
 
-    # Draw contours on the image
-    image_contours = image.copy()
-    cv2.drawContours(image_contours, contours, -1, (0, 255, 0), 2)
+# Get the other values from sliders
+offset_c = cv2.getTrackbarPos('Offset C', 'Image')
 
-    return image_contours, contours
+ksize = cv2.getTrackbarPos('Ksize', 'Image')
 
-def save_parameters():
-    # Save current slider values to a JSON file
-    params = {
-        "thresh_block_size": thresh_block_size,
-        "thresh_c": thresh_c,
-        "ksize": ksize,
-        "kernel_size": kernel_size[0]  # Assuming square kernel size
-    }
+# Enforce the odd condition
+if ksize % 2 == 0:
+    ksize += 1
 
-    with open(params_file, 'w') as f:
-        json.dump(params, f, indent=4)
-    print(f"Parameters saved to {params_file}")
+# Ensure it's greater than 1
+if ksize <= 1:
+    ksize = 3
 
-while True:
-    # Get current values from the sliders
-    thresh_block_size = cv2.getTrackbarPos('Thresh Block Size', 'Contour Detection')
+kernel_size_single = cv2.getTrackbarPos('Kernel Size', 'Image')
+# Enforce the odd condition
+if kernel_size_single % 2 == 0:
+    kernel_size_single += 1
 
-    # Enforce the odd condition
-    if thresh_block_size % 2 == 0:
-        thresh_block_size += 1
+# Ensure it's greater than 1
+if kernel_size_single <= 1:
+    kernel_size_single = 3
+kernel_size = (kernel_size_single, kernel_size_single)
 
-    # Ensure it's greater than 1
-    if thresh_block_size <= 1:
-        thresh_block_size = 3
+d = cv2.getTrackbarPos('d', 'Image')
+if d < 1:
+    d = 1
+
+sigma_color = cv2.getTrackbarPos('SigmaColor', 'Image')
+
+sigma_space = cv2.getTrackbarPos('SigmaSpace', 'Image')
+
+#we've got two playmats, so iterate over them each independently for easier thresholding
+for i, img in enumerate(playmats):
+    print(f"i = {i}")
+    #gray, blur, and adaptive threshold
+    thresh_playmats[i] = preprocess_image(img, thresh_max_value=thresh_max_value, block_size=block_size,
+                                                offset_c=offset_c, ksize=ksize, kernel_size=kernel_size,  d=d, sigma_color=sigma_color, sigma_space=sigma_space)
     
-    # Get the other values from sliders
-    thresh_c = cv2.getTrackbarPos('Thresh C', 'Contour Detection')
-    ksize = cv2.getTrackbarPos('Ksize', 'Contour Detection')
-    kernel_size_value = cv2.getTrackbarPos('Kernel Size', 'Contour Detection')
+    card_images = extract_card_bounding_boxes(img, thresh_playmats[i])
+
+    print(f"found {len(card_images)} cards on playmat {i} (zero-based)")
     
-    if ksize % 2 == 0:  # Ensure ksize is always odd
-        ksize += 1
-    if kernel_size_value % 2 == 0:  # Ensure kernel_size is always odd
-        kernel_size_value += 1
-    
-    kernel_size = (kernel_size_value, kernel_size_value)
-
-    # Apply contour detection with the current parameters
-    image_contours, contours = find_contours(image_gray, ksize=ksize, thresh_block_size=thresh_block_size,
-                                             thresh_c=thresh_c, kernel_size=kernel_size)
-
-    # Display the result
-    cv2.imshow('Contour Detection', image_contours)
-
-    # Wait for a key press
-    key = cv2.waitKey(1) & 0xFF
-    if key == 27:  # ESC to exit
-        break
-    elif key ==ord('s'): # 's' key to save parameters
-        save_parameters()
+    for card in card_images:    
+        cv2.imshow('Card Image', card)
+        key = cv2.waitKey(0) & 0xFF
+        hashes.append(compute_image_hash(card))
         
+    #Display the result
+    # cv2.imshow('Image', pre_proc_playmats[i])
+    # key = cv2.waitKey(0) & 0xFF
+
+#hashes = generate_perceptual_hashes(card_images)
+
+
+
+# Apply contour detection with the current parameters
+# image_contours, contours = find_contours(image, ksize=ksize, thresh_max_value=thresh_max_value, block_size=block_size,
+#                                              offset_c=offset_c, kernel_size=kernel_size)
+
+#Display the result
+# cv2.imshow('Image', image_contours)
+
+#image_gray, threshold = interactive_threshold(image_gray, thresh=thresh, thresh_max_value=thresh_max_value, block_size=block_size, offset_c=offset_c)
+
+# Show original and thresholded images side by side
+# cv2.imshow("Original Image", image_gray)
+#cv2.imshow("Image", threshold)
+
+# Wait for a key press
+key = cv2.waitKey(0) & 0xFF
+
 # Close all windows
 cv2.destroyAllWindows()

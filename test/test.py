@@ -16,7 +16,11 @@ from image_matcher.hash import generate_hash_pool
 
 
 # Initialize variables
-
+thresh=127
+thresh_max_value = 255
+block_size = 26
+offset_c = 5
+ksize = 4
 
 #opencv uses BGR (Blue, Green, Red) by default
 match_color = (132, 255, 0) #green

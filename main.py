@@ -9,9 +9,6 @@ import numpy as np
 import os
 import threading
 import queue
-import random
-import time
-import concurrent.futures
 
 from image_matcher.detect_image import find_cards
 import utils.const as const
@@ -29,8 +26,14 @@ class net_ready_eyes:
         self.detect_mode = "rectangle"
         #self.detect_mode = "auto"
 
+        #default display mode (what shows up in the video frame)
+        self.display_mode = "thresholding"
+        #self.display_mode = "unfiltered_contours"
+        #self.display_mode = "filtered_contours"
+        #self.display_mode = "rectangular_contours"
+
         # Initialize variables
-        self.cap = None  # This will be set after webcam selection
+        self.vid_stream = None  # This will be set after webcam selection
         self.is_running = False
 
         self.match_occured = False
@@ -46,33 +49,51 @@ class net_ready_eyes:
         self.available_webcams = self.find_webcams()
         self.dragging_point = None # Stores which point of the polygon is being dragged
 
+        self.thresh_max_value = 255
+        self.block_size = 27 #must be an odd number
+        self.offset_c = 5
+        #self.ksize = 4
+        self.kernel_size = (5,5) #must be a tuple of odd numbers
+
         # Get the current script's directory
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         
         # Set the default image folders relative to the script directory - low resolution images for parsing/matching,
         # and high resolution files for displaying once a match is found.
-        # IMPORTANT: The file names in these folders must match exactly. I have found Windows PowerToys Image Resizer to be helpful for scaling files:
+        # IMPORTANT: The file names in these folders must match exactly. I have found Windows PowerToys Image Resizer 
+        # to be helpful for scaling files:
         # https://learn.microsoft.com/en-us/windows/powertoys/install
         self.default_image_folder = const.HIGH_RES_DIR  # Folder named 'images'
         self.high_res_image_folder = const.HIGH_RES_DIR  # Folder named 'images'
-        # Set the current folder to the default image folder
         self.low_res_image_folder = const.LOW_RES_DIR
 
+        if self.low_res_image_folder:
+            self.hash_pool = generate_hash_pool(self.low_res_image_folder)
+
         # Coordinates for the ROI (Region of Interest) - where the playing card sized area will be placed
-        self.roi_x = 50  # X coordinate for the top-left corner
-        self.roi_y = 50  # Y coordinate for the top-left corner
+        self.roi_x = 0  # X coordinate for the top-left corner
+        self.roi_y = 0  # Y coordinate for the top-left corner
 
-        # Define the size of the "playing card" area (width, height)
-        self.card_width = 200
-        self.card_height = 300
+        # Define the size of the "region of interest"
+        self.roi_width = 400
+        self.roi_height = 600
 
-        # Initialize polygon with 4 points (modify as needed)
-        self.polygon = np.array([
-            [self.roi_x, self.roi_y],  # Top-left
-            [self.roi_x+self.card_width, self.roi_y],  # Top-right
-            [self.roi_x+self.card_width, self.roi_y+self.card_height],  # Bottom-right
-            [self.roi_x, self.roi_y+self.card_height]   # Bottom-left
-        ], dtype=np.int32)
+        self.roi_color = self.no_match_color
+
+        # this defines how big we want to display the matching image (high res images can sometimes be too big)
+        self.card_width = 300
+        self.card_height = 419
+
+        self.video_width = 640  # Default width, update dynamically if needed
+        self.video_height = 480  # Default height, update dynamically if needed
+
+        # # Initialize polygon with 4 points (modify as needed)
+        # self.polygon = np.array([
+        #     [self.roi_x, self.roi_y],  # Top-left
+        #     [self.roi_x+self.roi_width, self.roi_y],  # Top-right
+        #     [self.roi_x+self.roi_width, self.roi_y+self.roi_height],  # Bottom-right
+        #     [self.roi_x, self.roi_y+self.roi_height]   # Bottom-left
+        # ], dtype=np.int32)
 
         # Create GUI components
         self.main_frame = tk.Frame(self.root)
@@ -106,20 +127,34 @@ class net_ready_eyes:
         self.stop_button = tk.Button(self.root, text="Stop Webcam", command=self.stop_webcam, state=tk.DISABLED)
         self.select_button = tk.Button(self.root, text="Load Image Folder", command=self.select_image_folder)
         self.folder_label = tk.Label(self.root, text=f"Current Folder: {self.low_res_image_folder}")
+        
         # Webcam selection dropdown
         self.webcam_label = tk.Label(self.root, text="Select Webcam:")
         self.webcam_combobox = ttk.Combobox(self.root, values=self.available_webcams)
 
-        # Dropdown menu to select detect_mode
-        self.detect_mode_label = tk.Label(self.root, text="Detection Mode:")
-        self.detect_mode_label.pack(pady=5)
+        # # Dropdown menu to select detect_mode
+        # self.detect_mode_label = tk.Label(self.root, text="Detection Mode:")
+        # self.detect_mode_label.pack(pady=5)
 
-        self.detect_mode_combobox = ttk.Combobox(self.root, values=["polygon", "rectangle", "auto"])
-        self.detect_mode_combobox.set(self.detect_mode)  # populate the box with the current value
-        self.detect_mode_combobox.pack(pady=5)
+        # self.detect_mode_combobox = ttk.Combobox(self.root, values=["polygon", "rectangle", "auto"])
+        # self.detect_mode_combobox.set(self.detect_mode)  # populate the box with the current value
+        # self.detect_mode_combobox.pack(pady=5)
 
-        # Bind the combobox change event to update detect_mode
-        self.detect_mode_combobox.bind("<<ComboboxSelected>>", self.on_detect_mode_change)
+        # # Bind the combobox change event to update detect_mode
+        # self.detect_mode_combobox.bind("<<ComboboxSelected>>", self.on_detect_mode_change)
+
+        
+        # Dropdown menu to select what is displayed in the video frame
+        # (thresholded image, unfiltered contours, filtered contours, rectangular contours)
+        self.display_mode_label = tk.Label(self.root, text="Display Mode:")
+        self.display_mode_label.pack(pady=5)
+
+        self.display_mode_combobox = ttk.Combobox(self.root, values=["thresholding", "unfiltered contours", "filtered contours", "rectangular_contours"])
+        self.display_mode_combobox.set(self.display_mode)  # populate the box with the current value
+        self.display_mode_combobox.pack(pady=5)
+
+        # Bind the combobox change event to update display_mode
+        self.display_mode_combobox.bind("<<ComboboxSelected>>", self.on_display_mode_change)
         
         # Create a frame to hold buttons more compactly
         self.button_frame = tk.Frame(self.root)
@@ -136,7 +171,7 @@ class net_ready_eyes:
         
         # Default to first webcam in the list
         if len(self.available_webcams) >= 2:
-            self.webcam_combobox.set(self.available_webcams[1]) #default to #1 for Eric's Machine
+            self.webcam_combobox.set(self.available_webcams[2]) #default to #2 - camlink 4k on eric's systems
         elif self.available_webcams:
             self.webcam_combobox.set(self.available_webcams[0])
 
@@ -172,9 +207,6 @@ class net_ready_eyes:
         self.match_label = tk.Label(self.root, text="", font=("Arial", 12, "bold"), fg="green")
         self.match_label.pack()
 
-        self.video_width = 640  # Default width, update dynamically if needed
-        self.video_height = 480  # Default height, update dynamically if needed
-
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         self.worker_threads = 4 # todo: make configurable in UI
@@ -204,17 +236,29 @@ class net_ready_eyes:
             # Example: Update the ROI drawing logic based on the selected mode
             self.update_frame()
 
+    def on_display_mode_change(self, event):
+        """This function is triggered when the user selects a different detection mode from the dropdown."""
+        selected_mode = self.display_mode_combobox.get()
+        self.display_mode = selected_mode  # Update the display_mode variable
+
+        # Optionally, you can update the UI or log the change
+        print(f"Detection Mode set to: {self.display_mode}")
+        self.log_debug_message(f"Detection Mode set to: {self.display_mode}")
+        
+        # You can then update other parts of the program that depend on the display_mode if needed
+        # Example: Update the ROI drawing logic based on the selected mode
+        self.update_frame()
+
     def on_roi_press(self, event):
         """Handle mouse button press on ROI."""
-        x, y = event.x, event.y
-        margin = 10  # Sensitivity for resizing
+        x, y = event.x * self.scale_x, event.y * self.scale_y  # Scale click position
+        margin = 10 * self.scale_x  # Adjust margin sensitivity
 
         #print("Polygon points:", self.polygon)
         print(f"in on_roi_press with x,y = {x},{y} and self.detect_mode = {self.detect_mode}")  # Debugging line
 
         if self.detect_mode == "polygon":
             # Check if the user clicked near a polygon point
-            print ("got here")
             for i, (px, py) in enumerate(self.polygon):
                 if abs(x - px) < margin and abs(y - py) < margin:  # Click near a point
                     self.dragging_point = i  # Store index of point
@@ -226,17 +270,17 @@ class net_ready_eyes:
             if (self.roi_x - margin <= x <= self.roi_x + margin and
                 self.roi_y - margin <= y <= self.roi_y + margin):
                 self.roi_resizing = "top_left"
-            elif (self.roi_x + self.card_width - margin <= x <= self.roi_x + self.card_width + margin and
+            elif (self.roi_x + self.roi_width - margin <= x <= self.roi_x + self.roi_width + margin and
                 self.roi_y - margin <= y <= self.roi_y + margin):
                 self.roi_resizing = "top_right"
             elif (self.roi_x - margin <= x <= self.roi_x + margin and
-                self.roi_y + self.card_height - margin <= y <= self.roi_y + self.card_height + margin):
+                self.roi_y + self.roi_height - margin <= y <= self.roi_y + self.roi_height + margin):
                 self.roi_resizing = "bottom_left"
-            elif (self.roi_x + self.card_width - margin <= x <= self.roi_x + self.card_width + margin and
-                self.roi_y + self.card_height - margin <= y <= self.roi_y + self.card_height + margin):
+            elif (self.roi_x + self.roi_width - margin <= x <= self.roi_x + self.roi_width + margin and
+                self.roi_y + self.roi_height - margin <= y <= self.roi_y + self.roi_height + margin):
                 self.roi_resizing = "bottom_right"
-            elif (self.roi_x <= x <= self.roi_x + self.card_width and
-                self.roi_y <= y <= self.roi_y + self.card_height):
+            elif (self.roi_x <= x <= self.roi_x + self.roi_width and
+                self.roi_y <= y <= self.roi_y + self.roi_height):
                 self.roi_dragging = True
                 self.roi_drag_offset = (x - self.roi_x, y - self.roi_y)
         
@@ -246,14 +290,14 @@ class net_ready_eyes:
 
     def on_roi_drag(self, event):
         """Handle mouse movement while dragging."""
-        x, y = event.x, event.y
+        x, y = event.x * self.scale_x, event.y * self.scale_y  # Scale mouse coordinates
 
         if self.detect_mode == "polygon" and self.dragging_point is not None:
             self.polygon[self.dragging_point] = [x, y]  # Move point dynamically
 
         if self.roi_dragging:
-            self.roi_x = max(0, min(event.x - self.roi_drag_offset[0], int(self.cap.get(3)) - self.card_width))
-            self.roi_y = max(0, min(event.y - self.roi_drag_offset[1], int(self.cap.get(4)) - self.card_height))
+            self.roi_x = max(0, min(x - self.roi_drag_offset[0], int(self.vid_stream.get(3)) - self.roi_width))
+            self.roi_y = max(0, min(y - self.roi_drag_offset[1], int(self.vid_stream.get(4)) - self.roi_height))
 
     def on_roi_release(self, event):
         """End any dragging or resizing action."""
@@ -263,26 +307,52 @@ class net_ready_eyes:
 
     def on_mouse_move(self, event):
         """Change cursor when near ROI edges to indicate resizing."""
-        x, y = event.x, event.y
-        margin = 10
+        
+        # Scale mouse event coordinates
+        x = event.x * self.scale_x
+        y = event.y * self.scale_y
+        
+        margin = 30
 
+        print(f"self.roi_x = {self.roi_x}, mouse position x (scaled) = {x}")
+        print(f"self.roi_y = {self.roi_y}, mouse position y (scaled) = {y}")
+
+        # Corner resizing
         if (self.roi_x - margin <= x <= self.roi_x + margin and
             self.roi_y - margin <= y <= self.roi_y + margin):
             self.video_frame.config(cursor="size_nw_se")
-        elif (self.roi_x + self.card_width - margin <= x <= self.roi_x + self.card_width + margin and
+        elif (self.roi_x + self.roi_width - margin <= x <= self.roi_x + self.roi_width + margin and
             self.roi_y - margin <= y <= self.roi_y + margin):
             self.video_frame.config(cursor="size_ne_sw")
         elif (self.roi_x - margin <= x <= self.roi_x + margin and
-            self.roi_y + self.card_height - margin <= y <= self.roi_y + self.card_height + margin):
+            self.roi_y + self.roi_height - margin <= y <= self.roi_y + self.roi_height + margin):
             self.video_frame.config(cursor="size_ne_sw")
-        elif (self.roi_x + self.card_width - margin <= x <= self.roi_x + self.card_width + margin and
-            self.roi_y + self.card_height - margin <= y <= self.roi_y + self.card_height + margin):
+        elif (self.roi_x + self.roi_width - margin <= x <= self.roi_x + self.roi_width + margin and
+            self.roi_y + self.roi_height - margin <= y <= self.roi_y + self.roi_height + margin):
             self.video_frame.config(cursor="size_nw_se")
-        elif (self.roi_x <= x <= self.roi_x + self.card_width and
-            self.roi_y <= y <= self.roi_y + self.card_height):
-            self.video_frame.config(cursor="fleur")
+        
+        # **NEW: Vertical resizing (top and bottom edges)**
+        elif (self.roi_x <= x <= self.roi_x + self.roi_width and
+            self.roi_y - margin <= y <= self.roi_y + margin):
+            self.video_frame.config(cursor="size_ns")  # Top edge
+        elif (self.roi_x <= x <= self.roi_x + self.roi_width and
+            self.roi_y + self.roi_height - margin <= y <= self.roi_y + self.roi_height + margin):
+            self.video_frame.config(cursor="size_ns")  # Bottom edge
+        
+        # **NEW: Horizontal resizing (left and right edges)**
+        elif (self.roi_x - margin <= x <= self.roi_x + margin and
+            self.roi_y <= y <= self.roi_y + self.roi_height):
+            self.video_frame.config(cursor="size_we")  # Left edge
+        elif (self.roi_x + self.roi_width - margin <= x <= self.roi_x + self.roi_width + margin and
+            self.roi_y <= y <= self.roi_y + self.roi_height):
+            self.video_frame.config(cursor="size_we")  # Right edge
+        
+        # Move cursor when inside ROI
+        elif (self.roi_x <= x <= self.roi_x + self.roi_width and
+            self.roi_y <= y <= self.roi_y + self.roi_height):
+            self.video_frame.config(cursor="fleur")  # Move cursor
         else:
-            self.video_frame.config(cursor="")
+            self.video_frame.config(cursor="")  # Default
 
     def find_webcams(self):
         """Find available webcams and get their descriptive names."""
@@ -300,19 +370,17 @@ class net_ready_eyes:
         selected_webcam = self.webcam_combobox.get()
         webcam_index = int(selected_webcam.split(" ")[0])  # Extract webcam index
         
-        self.cap = cv2.VideoCapture(webcam_index, cv2.CAP_DSHOW)  # Use DirectShow backend
-        if not self.cap.isOpened():
+        self.vid_stream = cv2.VideoCapture(webcam_index, cv2.CAP_DSHOW)  # Use DirectShow backend
+        if not self.vid_stream.isOpened():
             messagebox.showerror("Error", "Failed to open the selected webcam.")
             return
 
         # Read a frame to get the dimensions
-        ret, frame = self.cap.read()
-        if ret:
-            frame_height, frame_width, _ = frame.shape
+        ret, frame = self.vid_stream.read()
+        self.log_debug_message(f"Started video stream with dimensions (height, width, channels): {frame.shape}")  # Should print (height, width, channels)
 
-            # Calculate center position for ROI
-            self.roi_x = (frame_width - self.card_width) // 2
-            self.roi_y = (frame_height - self.card_height) // 2
+        self.scale_x = frame.shape[1] / self.video_width  # Original width / Display width
+        self.scale_y = frame.shape[0] / self.video_height  # Original height / Display height
 
         self.is_running = True
         self.start_button.config(state=tk.DISABLED)
@@ -326,9 +394,9 @@ class net_ready_eyes:
     def stop_webcam(self):
         """ Stop the webcam feed. """
         self.is_running = False
-        if self.cap is not None:
-            self.cap.release()
-            self.cap = None
+        if self.vid_stream is not None:
+            self.vid_stream.release()
+            self.vid_stream = None
         self.video_frame.config(image="")
         self.match_frame.config(image="")
         self.start_button.config(state=tk.NORMAL)
@@ -350,19 +418,42 @@ class net_ready_eyes:
 
     def update_frame(self):
         if self.is_running:
-            ret, frame = self.cap.read()
+            ret, frame = self.vid_stream.read()
             if ret:
+                # pass the full frame for display (will be resized)
+                self.draw_roi_frame(frame)
+
+                roi_x = int(self.roi_x)
+                roi_y = int(self.roi_y)
+                roi_width = int(self.roi_width)
+                roi_height = int(self.roi_height)
+
+                # Crop the frame to only contain the ROI
+                roi_frame = frame[roi_y:roi_y + roi_height, roi_x:roi_x + roi_width]
+                #roi_frame = frame[self.roi_y:self.roi_y + self.roi_height, self.roi_x:self.roi_x + self.roi_width]
+
+                # Debugging: Print cropped frame size
+                print(f"Cropped ROI size: {roi_frame.shape}")
 
                 self.roi_color = self.match_color if self.match_occured else self.no_match_color
 
-                self.draw_roi_frame(frame)
+                
                 #self.log_debug_message("in ret loop")
 
                 # Start recognition in a separate thread if not already running
                 if self.recognition_thread is None or not self.recognition_thread.is_alive():
                     # Pass the frame, hash_pool we've calculated for the cards in the pool, 
                     # and a pointer to the recognition queue to the find_cards function
-                    self.recognition_thread = threading.Thread(target=find_cards(frame, self.hash_pool, self.recognition_queue))
+                    self.recognition_thread = threading.Thread(target=find_cards(roi_frame,
+                                                                                 self.thresh_max_value, 
+                                                                                 self.block_size, 
+                                                                                 self.offset_c,
+                                                                                 self.kernel_size,
+                                                                                 self.match_threshold,
+                                                                                 self.hash_pool, 
+                                                                                 self.recognition_queue,
+                                                                                 self.display_mode))
+                    
                     self.recognition_thread.daemon = True
                     self.recognition_thread.start()
 
@@ -380,7 +471,8 @@ class net_ready_eyes:
         if self.detect_mode == "rectangle":
             # Draw rectangle using PIL
             draw.rectangle(
-                [(self.roi_x, self.roi_y), (self.roi_x + self.card_width, self.roi_y + self.card_height)],
+                [(self.roi_x, self.roi_y),
+                 (self.roi_x + self.roi_width, self.roi_y + self.roi_height)],
                 outline=self.roi_color, width=4
             )
 
@@ -396,9 +488,13 @@ class net_ready_eyes:
         elif self.detect_mode == "auto":
             pass #to do: create automatic detect mode
 
+        print(f"image.size = {image.size}")
+
         # Resize for Tkinter display
-        #image_resized = image.resize((self.video_width, self.video_height), Image.LANCZOS)
-        image_resized = image
+        image_resized = image.resize((self.video_width, self.video_height), Image.LANCZOS)
+
+        print(f"image_resized.size = {image_resized.size}")
+        #image_resized = image
 
         
         # Convert back to Tkinter-compatible format
@@ -431,7 +527,7 @@ class net_ready_eyes:
     def display_matched_image(self):
         if self.matched_image_path:
             image = Image.open(self.matched_image_path)
-            image_resized = image.resize((300, 419), Image.LANCZOS)
+            image_resized = image.resize((self.card_width, self.card_height), Image.LANCZOS)
             #image_resized = image #debugging scaling
             photo = ImageTk.PhotoImage(image=image_resized)
             self.match_frame.config(image=photo)
@@ -448,14 +544,6 @@ class net_ready_eyes:
         if folder_path:
             self.hash_pool = generate_hash_pool(folder_path)
 
-    def rotate_image(self, image, angle):
-        """ Rotate image by a specified angle. """
-        (h, w) = image.shape[:2]
-        center = (w // 2, h // 2)
-        matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
-        rotated = cv2.warpAffine(image, matrix, (w, h))
-        return rotated
-
     def log_debug_message(self, message):
         """ Log debug messages to the Text widget. """
         self.debug_log.config(state=tk.NORMAL)  # Enable text widget for editing
@@ -471,107 +559,3 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = net_ready_eyes(root)
     root.mainloop()
-
-
-    # def perform_image_recognition(self, frame):
-    #     """ Perform image recognition in a separate thread. """
-    #     start_time = time.time()
-    #     knn_time = 0
-    #     filter_time = 0
-    #     if self.hash_pool:
-
-            
-    #         #gray_frame = cv2.cvtColor(roi_frame, cv2.COLOR_BGR2GRAY)
-
-    #         #cv2.imshow("ROI Frame", roi_frame)
-    #         #cv2.waitKey(1) #Ensures the OpenCV window refreshes
-
-    #         width = 95
-    #         height = 133
-
-    #         # Resize to a fixed size for consistency
-    #         if self.detect_mode == "polygon":
-    #             roi_frame = cv2.resize(warped_roi, (width, height))
-    #         else:
-    #             roi_frame = cv2.resize(roi_frame, (width, height))
-            
-    #         kp2, des2 = self.orb.detectAndCompute(roi_frame, None)
-
-    #         #before we look through any images, reset our scores to zero
-    #         match_path = None
-    #         lowest_dist = 300.0 #use a high number to start - best matches are the lowest distance
-
-    #         def process_stat(stat, d2):
-    #             inner_dist = lowest_dist  # use a high number to start - best matches are the lowest distance
-    #             knn_t = 0
-    #             filter_t = 0
-
-    #             for kp1, des1 in stat:
-    #                 if des1 is None or des2 is None:
-    #                     continue  # Avoid running knnMatch() on None values
-    #                 probe_start = time.time()
-    #                 matches = self.flann.knnMatch(des1, d2, k=min(2, len(d2)))
-    #                 probe_end = time.time()
-    #                 knn_t += probe_end - probe_start
-
-    #                 # # Apply Lowe's ratio test (helps remove false matches)
-    #                 probe_start = time.time()
-    #                 for match in matches:
-    #                     if len(match) < 2:
-    #                         continue  # skip if there aren't at least two matches
-    #                     m, n = match[:2]  # Unpack only the first two matches
-
-    #                     # check to see if m is significantly better than n, and if so, consider it a good match
-    #                     # the lower the threshold, the stricter the test
-    #                     if m.distance < 0.75 * n.distance:  # adjust ratio as needed
-    #                         if m.distance < inner_dist:
-    #                             # set the new best score (smallest distance)
-    #                             inner_dist = m.distance
-
-    #                 probe_end = time.time()
-    #                 filter_t += probe_end - probe_start
-    #             return inner_dist, knn_t, filter_t
-
-    #         with concurrent.futures.ThreadPoolExecutor(max_workers=self.worker_threads) as executor:
-    #             future2path = {}
-    #             for (image, stats) in self.target_images:
-    #                 future2path[executor.submit(process_stat, stats, des2)] = image
-
-    #             for future in concurrent.futures.as_completed(future2path):
-    #                 image_path = future2path[future]
-    #                 try:
-    #                     dist, knn, f = future.result()
-    #                 except Exception as exc:
-    #                     print(f'{image_path} generated an exception: {exc}')
-    #                 else:
-    #                     knn_time += knn
-    #                     filter_time += f
-    #                     if dist < lowest_dist:
-    #                         lowest_dist = dist
-    #                         match_path = image_path
-
-    #         if match_path and lowest_dist < self.match_threshold:
-    #             if match_path.strip().startswith("alt_"):
-    #                 match_path = match_path[4:]
-
-    #             #self.draw_and_pause(target_image, kp1, roi_frame, kp2, match)
-    #             high_res_path = os.path.join(self.high_res_image_folder, match_path)
-    #             self.log_debug_message(f"Match detected (distance of {lowest_dist}) - adding {match_path} to recognition_queue!")
-    #             # Ensure the high-resolution file exists before adding it to the queue
-    #             if os.path.exists(high_res_path):
-    #                 self.log_debug_message(f"Match detected - using high-res version: {high_res_path}")
-    #                 self.recognition_queue.put(high_res_path)
-    #             else:
-    #                 low_res_path = os.path.join(self.low_res_image_folder, match_path)
-    #                 if os.path.exists(high_res_path):
-    #                     self.log_debug_message(f"High-resolution version not found ({high_res_path}), using low-res: {low_res_path}")
-    #                     self.recognition_queue.put(low_res_path)
-    #                 else:
-    #                     self.log_debug_message(f"No path found")
-
-
-    #         #print how long parsing all of the images took
-    #         end_time = time.time()
-    #         elapsed_time = end_time - start_time
-    #         self.log_debug_message(f"Image recognition took {elapsed_time:.4f} seconds for {len(self.target_images)} images.")
-    #         self.log_debug_message(f"knn: {knn_time:.4f}, filter: {filter_time:.4f}")
