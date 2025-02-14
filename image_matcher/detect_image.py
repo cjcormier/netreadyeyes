@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import pandas as pd
-#from PIL import Image, ImageDraw, ImageTk
+from PIL import Image, ImageTk
 
 from image_matcher.hash import find_minimum_hash_difference
 from utils.utils import convert_image_to_opencv, convert_image_to_pil
@@ -13,19 +13,16 @@ BKG_THRESH = 60
 CARD_THRESH = 30
 
 def find_cards(query_image, 
-               thresh_max_value=255, 
-               block_size=101, 
-               offset_c=10, 
-               kernel_size=(5,5),
-               match_threshold=25,
+               rec_params=[],
                hash_pool=[],
                recognition_queue=[],
+               display_image=None, # display_image function passed in from the UI
                display_mode=None):
     
-    thresh_image = preprocess_image(query_image, thresh_max_value, block_size, offset_c, kernel_size)
+    thresh_image = preprocess_image(query_image, rec_params)
 
-    if display_mode == "thresholding":
-        cv2.imshow('thresholding', thresh_image)
+    if display_mode == "thresholding" and display_image:
+        display_image(thresh_image)
 
     card_sized_imgs = extract_card_bounding_boxes(query_image, thresh_image, display_mode)
 
@@ -268,8 +265,14 @@ def _threshold_size_bounded_by(area, min_area=5000, max_area=200000):
     print(f"Contour area: {area}")
     return min_area <= area <= max_area
 
-def preprocess_image(image, thresh_max_value=255, block_size=101, offset_c=10, kernel_size=(5,5), stddev=0):
+def preprocess_image(image, rec_params=[]):
     """Returns a grayed, blurred, and adaptively thresholded camera image."""
+
+    kernel_size = rec_params["kernel_size"]
+    thresh_max_value = rec_params["thresh_max_value"]
+    block_size = rec_params["block_size"]
+    offset_c = rec_params["offset_c"]
+    stddev = rec_params["stddev"]
 
     gray = cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray,kernel_size,stddev)
@@ -292,21 +295,21 @@ def extract_card_bounding_boxes(image, thresh, display_mode=None):
 
     #we'll want to sort their indices by contour size
 
-    # DEBUG - display contours that we found
-    if display_mode == "unfiltered contours":
+    # display contours that we found
+    if display_mode == "unfiltered contours" and display_image:
         image_contours = image.copy()
         cv2.drawContours(image_contours, contours, -1, (0, 255, 0), 2)
-        cv2.imshow("Unfiltered Contours", image_contours)
+        display_image(image_contours)
 
     # filter the contours based on the area and area-to-perimeter ratio 
     # (cards luckily have a consistent shape)
     filtered_contours = filter_contours(contours)
     
-    # DEBUG - display filtered contours
-    if display_mode == "filtered contours":
+    # display filtered contours
+    if display_mode == "filtered contours" and display_image:
         image_filtered_contours = image.copy()
         cv2.drawContours(image_filtered_contours, filtered_contours, -1, (0, 255, 0), 2)
-        cv2.imshow("Filtered Contours", image_filtered_contours)
+        display_image("Filtered Contours", image_filtered_contours)
 
     card_images = []
     

@@ -11,3 +11,5 @@ image_matcher/__pycache__/hash.cpython-313.pyc
 utils/__pycache__/__init__.cpython-313.pyc
 utils/__pycache__/const.cpython-313.pyc
 utils/__pycache__/utils.cpython-313.pyc
+ui/__pycache__/ui_class.cpython-313.pyc
+ui/__pycache__/__init__.cpython-313.pyc
