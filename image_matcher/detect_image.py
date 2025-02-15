@@ -24,7 +24,7 @@ def find_cards(query_image,
     if display_mode == "thresholding" and display_image:
         display_image(thresh_image)
 
-    card_sized_imgs = extract_card_bounding_boxes(query_image, thresh_image, display_mode)
+    card_sized_imgs = extract_card_bounding_boxes(query_image, thresh_image, display_mode, display_image)
 
     print(f"found {len(card_sized_imgs)} card sized boxes in this image")
     
@@ -282,7 +282,7 @@ def preprocess_image(image, rec_params=[]):
     return thresh
 
 
-def extract_card_bounding_boxes(image, thresh, display_mode=None):
+def extract_card_bounding_boxes(image, thresh, display_mode=None, display_image=None):
     """ Detect contours, filter them, and get bounding boxes using approxPolyDP. """
     
      #mode = cv2.RETR_EXTERNAL
@@ -298,8 +298,9 @@ def extract_card_bounding_boxes(image, thresh, display_mode=None):
     # display contours that we found
     if display_mode == "unfiltered contours" and display_image:
         image_contours = image.copy()
-        cv2.drawContours(image_contours, contours, -1, (0, 255, 0), 2)
-        display_image(image_contours)
+        image_rgb = cv2.cvtColor(image_contours, cv2.COLOR_BGR2RGB)
+        cv2.drawContours(image_rgb, contours, -1, (0, 255, 0), 2)
+        display_image(image_rgb)
 
     # filter the contours based on the area and area-to-perimeter ratio 
     # (cards luckily have a consistent shape)
@@ -308,8 +309,9 @@ def extract_card_bounding_boxes(image, thresh, display_mode=None):
     # display filtered contours
     if display_mode == "filtered contours" and display_image:
         image_filtered_contours = image.copy()
-        cv2.drawContours(image_filtered_contours, filtered_contours, -1, (0, 255, 0), 2)
-        display_image("Filtered Contours", image_filtered_contours)
+        image_rgb = cv2.cvtColor(image_filtered_contours, cv2.COLOR_BGR2RGB)
+        cv2.drawContours(image_rgb, filtered_contours, -1, (0, 255, 0), 2)
+        display_image(image_rgb)
 
     card_images = []
     
@@ -321,8 +323,11 @@ def extract_card_bounding_boxes(image, thresh, display_mode=None):
         # cv2.waitKey(0)
 
         if len(approx) == 4:  # Ensuring it's a quadrilateral (card)
-            cv2.drawContours(image, [approx], -1, (0, 255, 0), 2)
-            cv2.imshow("Approximated Contours", image)
+            if display_mode == "approx contours" and display_image:
+                image_approx_contours = image.copy()
+                image_rgb = cv2.cvtColor(image_approx_contours, cv2.COLOR_BGR2RGB)
+                cv2.drawContours(image_rgb, [approx], -1, (0, 255, 0), 2)
+                display_image(image_rgb)
             
             x, y, w, h = cv2.boundingRect(approx)
             card = image[y:y+h, x:x+w]  # Crop card region
