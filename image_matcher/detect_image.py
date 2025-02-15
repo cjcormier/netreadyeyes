@@ -243,6 +243,24 @@ def find_rectangular_contours(contours, hierarchy):
     return rectangular_contours
 
 
+# def detect_rectangles(image):
+#     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+#     edged = cv2.Canny(gray, 50, 150)
+
+#     contours, hierarchy = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+#     rectangles = []
+#     for contour in contours:
+#         approx = cv2.approxPolyDP(contour, 0.01 * cv2.arcLength(contour, True), True)
+#         if len(approx) == 4:
+#             # Check aspect ratio if needed 
+#             rect = cv2.boundingRect(approx)
+#             aspect_ratio = rect[2] / rect[3]
+#             if aspect_ratio > 0.9 and aspect_ratio < 1.1:
+#                 rectangles.append(approx)
+
+#     return rectangles
+
 def _get_stack(hierarchy):
     return [
         (0, hierarchy[0][0]),
@@ -262,7 +280,6 @@ def _is_rectangular(contour):
 
 
 def _threshold_size_bounded_by(area, min_area=5000, max_area=200000):
-    print(f"Contour area: {area}")
     return min_area <= area <= max_area
 
 def preprocess_image(image, rec_params=[]):
@@ -304,8 +321,9 @@ def extract_card_bounding_boxes(image, thresh, display_mode=None, display_image=
 
     # filter the contours based on the area and area-to-perimeter ratio 
     # (cards luckily have a consistent shape)
-    filtered_contours = filter_contours(contours)
-    
+    # filtered_contours = filter_contours(contours)
+    filtered_contours = find_rectangular_contours(contours, hier)
+
     # display filtered contours
     if display_mode == "filtered contours" and display_image:
         image_filtered_contours = image.copy()
