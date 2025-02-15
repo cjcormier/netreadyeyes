@@ -14,14 +14,14 @@ class NetReadyEyesApp():
         self.root = root
         self.root.title("Net Ready Eyes")                
         # Initialize the core app variables
-        self.video_source = None  # This will be set after webcam selection
-        self.available_webcams = self.find_webcams()
+        self.video_source = None  # This will be set after video_source selection
+        self.available_video_sources = self.find_video_sources()
         self.hash_pool = {}
 
          # Create the UI
         self.ui = UI(root, self)
 
-        self.is_running = False
+        self._is_running = False
 
         self.recognition_queue = queue.Queue() # Queue for handling recognition results
         self.recognition_thread = None
@@ -48,27 +48,27 @@ class NetReadyEyesApp():
         self.card_height = 419
         
         # Default value for the frequency (in milliseconds)
-        # self.processing_period = self.ui.proc_period_slider.get()
-        self.processing_period = 500
+        self.processing_period = int(self.ui.proc_period_slider.get())
+        # self.processing_period = 700
         self.worker_threads = 4 # todo: make configurable in UI
 
-    def find_webcams(self):
-        """Find available webcams and get their descriptive names."""
-        webcams = []
+    def find_video_sources(self):
+        """Find available video_sources and get their descriptive names."""
+        video_sources = []
         graph = FilterGraph()
-        devices = graph.get_input_devices()  # List of webcam names
+        devices = graph.get_input_devices()  # List of video_source names
         
         for index, device_name in enumerate(devices):
-            webcams.append((index, device_name))  # Store index and name as a tuple
+            video_sources.append((index, device_name))  # Store index and name as a tuple
         
-        return webcams
+        return video_sources
 
-    # def update_proc_period(self, value):
-    #     self.processing_period = int(value)
+    def update_proc_period(self, value):
+        self.processing_period = int(float(value))
 
-    # def update_threshold(self, value):
-    #     self.rec_params["match_threshold"] = float(value)
-    #     self.ui.log_msg(f"Updated match Threshold to {self.rec_params["match_threshold"]}")
+    def update_threshold(self, value):
+        self.rec_params["match_threshold"] = float(value)
+        self.ui.log_msg(f"Updated match Threshold to {self.rec_params["match_threshold"]}")
 
     def update_recognition(self):
         """ Process recognition separately from video update. """
@@ -120,11 +120,14 @@ class NetReadyEyesApp():
         # OBS integration (if needed) can go here
 
     def start(self):
-        self.is_running = True
+        self._is_running = True
         self.update_recognition()
 
     def stop(self):
-        self.is_running = False
+        self._is_running = False
+
+    def is_running(self):
+        return self._is_running
 
 if __name__ == "__main__":
     # root = tk.Tk()
