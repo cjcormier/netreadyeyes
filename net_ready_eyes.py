@@ -81,6 +81,8 @@ class NetReadyEyesApp():
             return # Stop if app isn't running
         
         roi_frame = self.ui.get_roi_frame()
+        if roi_frame is None:
+            return
       
         self.handle_recognition(roi_frame)
         # Schedule next recognition check
