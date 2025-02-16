@@ -25,7 +25,7 @@ def compute_image_hash_from_file(image_path, hash_size=32):
         if os.path.exists(image_path):
             image = Image.open(image_path)
 
-        image, image_hash = compute_image_hash(image)
+        image, image_hash = compute_image_hash(image, hash_size)
         return (image_path, image_hash)
     except Exception as e:
         print(f"Error processing {image_path}: {e}")
@@ -84,24 +84,74 @@ def generate_hash_pool(path):
 
 
 def find_minimum_hash_difference(query_image, hash_pool_df, hash_size=32):
+    if hash_pool_df is None or hash_pool_df.empty:
+        print("Error: The hash pool dataframe is empty.")
+        return None, None
     
     if query_image is None:
         print("Error - find_minimum_hash_difference(): query_image is None")  # Debugging
         return None, None
-    
-    card_hash_data = compute_image_hash(query_image, hash_size)
-    if card_hash_data is None:
+
+    # if isinstance(query_image, Image.Image):
+    #     img_copy = query_iamge.copy()
+    #     img_copy = convert_image_to_opencv(img_copy)
+    #     cv2.imshow('query_image', img_copy)
+    #     cv2.waitKey(0)
+    #     cv2.destroyAllWindows()
+
+    # Convert OpenCV image to PIL format if needed
+    if isinstance(query_image, np.ndarray):
+        # cv2.imshow('query_image', query_image)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+        query_image = convert_image_to_pil(query_image)
+
+    card_path, card_hash = compute_image_hash(query_image, hash_size)
+
+    if card_hash is None:
         print("Error: compute_image_hash returned None")  # Debugging
         return None, None
+    else:
+        print(f"card_hash for the query_image = {hash_to_hex(card_hash)}")
     
-    card_path, card_hash = compute_image_hash(query_image, hash_size)
     hash_pool = pd.DataFrame(hash_pool_df)
 
-    #add a new in the hash pool to store the difference between the computed hash and each stored hash
+    # ///////// DEBUGGING DEVIL CHARM SPECIFICALLY
+
+    # Find the row where 'card_name' matches 'devil_charm.png'
+    devil_charm_row = hash_pool_df[hash_pool_df['name'] == 'devil_charm.png']
+
+    if not devil_charm_row.empty:
+        devil_charm_hash = devil_charm_row['card_hash_%d' % hash_size].values[0]
+        
+        # Compute Hamming distance
+        devil_charm_diff = np.count_nonzero(devil_charm_hash != card_hash)
+
+        print(f"\nComparing query image to 'devil_charm.png':")
+        print(f"Query Hash (Hex): {hash_to_hex(card_hash)}")
+        print(f"Devil Charm Hash (Hex): {hash_to_hex(devil_charm_hash)}")
+        print(f"Hamming Distance: {devil_charm_diff}\n")
+        # Print bitwise differences
+       
+    else:
+        print("Error: 'devil_charm.png' not found in hash pool.")
+
+    # ///////// END DEBUGGING DEVIL CHARM SPECIFICALLY
+
+
+    #add a new value in the hash pool to store the difference between the computed hash and each stored hash
     hash_pool['diff'] = hash_pool['card_hash_%d' % hash_size]
-    # Calculate the Hamming distance between the image hash and each hash in the pool
+    # Calculate the Hamming distance between the image hash and eac h hash in the pool
     hash_pool['diff'] = hash_pool['diff'].apply(lambda x: np.count_nonzero(x != card_hash))
-    
+
     # Return the row with the smallest hash difference and the minimum difference value
     return hash_pool[hash_pool['diff'] == min(hash_pool['diff'])].iloc[0], \
            min(hash_pool['diff'])
+
+def hash_to_hex(hash_array):
+    """Convert a boolean or binary NumPy array to a hex string."""
+    # Ensure it's a NumPy array of 0s and 1s
+    binary_str = ''.join(str(int(b)) for b in hash_array.flatten())  
+    # Convert binary string to hex
+    hex_str = f"{int(binary_str, 2):0{len(binary_str) // 4}X}"  
+    return hex_str

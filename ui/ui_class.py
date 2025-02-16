@@ -29,15 +29,19 @@ class UI:
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
+        # this defines how big we want to display the matching image (high res images can sometimes be too big)
+        self.card_width = 300
+        self.card_height = 419
+
         #choose from rectangle, polygon, or auto - to do: make this selectable from a drop down
         #self.detect_mode = "polygon"
         self.detect_mode = "rectangle"
         #self.detect_mode = "auto"
 
         #default display mode (what shows up in the video frame)
-        self.display_mode = "thresholding"
+        #self.display_mode = "thresholding"
         #self.display_mode = "unfiltered contours"
-        #self.display_mode = "filtered contours"
+        self.display_mode = "filtered contours"
         #self.display_mode = "approx contours"
 
         # Coordinates for the ROI (Region of Interest) - where the playing card sized area will be placed
@@ -68,8 +72,8 @@ class UI:
         self.high_res_image_folder = const.HIGH_RES_DIR  # Folder named 'images'
         self.low_res_image_folder = const.LOW_RES_DIR
 
-        if self.low_res_image_folder:
-            new_hash_pool = generate_hash_pool(self.low_res_image_folder)
+        if self.high_res_image_folder:
+            new_hash_pool = generate_hash_pool(self.high_res_image_folder)
             self.app.update_hash_pool(new_hash_pool)
 
         # The delay between frames in millisecond for the video feed to update
@@ -112,6 +116,8 @@ class UI:
         self.offset_c_label = ttk.Label(self.control_frame, text="Offset C: 5")
         self.kernel_size_label = ttk.Label(self.control_frame, text="Kernel Size (nxn): 5")
         self.match_threshold_label = ttk.Label(self.control_frame, text="Match Threshold: 20")
+        self.card_min_area_label = ttk.Label(self.control_frame, text="Card Min Area: 1000")
+        self.card_max_area_label = ttk.Label(self.control_frame, text="Card Max Area: 10000")
         # self.threshold_label = ttk.Label(self.control_frame, text="Image Detection Threshold (perc of keypoints:")
         # self.threshold_slider = ttk.Scale(self.control_frame, from_=0, to=100, orient=HORIZONTAL, command=self.app.update_threshold)
         self.block_size_spinbox = ttk.Spinbox(
@@ -130,6 +136,15 @@ class UI:
             self.control_frame, from_=1, to=100, increment=1, command=lambda: self.update_match_threshold_label(self.match_threshold_spinbox.get())
         )
         self.match_threshold_spinbox.set(20)  # Default value
+        self.card_min_area_spinbox = ttk.Spinbox(
+                                                                                          
+            self.control_frame, from_=5000, to=200000, increment=1000, command=lambda: self.update_card_min_area_label(self.card_min_area_spinbox.get())
+        )
+        self.card_min_area_spinbox.set(60000)  # Default value
+        self.card_max_area_spinbox = ttk.Spinbox(
+            self.control_frame, from_=5000, to=200000, increment=1000, command=lambda: self.update_card_max_area_label(self.card_max_area_spinbox.get())
+        )
+        self.card_max_area_spinbox.set(80000)  # Default value
 
         self.match_label = ttk.Label(self.control_frame, text="", font=("Arial", 12, "bold"), foreground="green")
 
@@ -180,6 +195,10 @@ class UI:
         self.kernel_size_spinbox.grid(row=8, column=1,padx=self.padx, pady=self.pady, sticky="w")
         self.match_threshold_label.grid(row=9, column=0, padx=self.padx, pady=self.pady, sticky="e")
         self.match_threshold_spinbox.grid(row=9, column=1,padx=self.padx, pady=self.pady, sticky="w")
+        self.card_min_area_label.grid(row=10, column=0, padx=self.padx, pady=self.pady, sticky="e")
+        self.card_min_area_spinbox.grid(row=10, column=1,padx=self.padx, pady=self.pady, sticky="w")
+        self.card_max_area_label.grid(row=11, column=0, padx=self.padx, pady=self.pady, sticky="e")
+        self.card_max_area_spinbox.grid(row=11, column=1,padx=self.padx, pady=self.pady, sticky="w")
 
         self.img_on_process_frame = None  # Keep track of the current image on the canvas
 
@@ -232,6 +251,17 @@ class UI:
         """Update the match_threshold_label with current spinbox value."""
         self.match_threshold_label.config(text=f"Match Threshold: {value}")
         self.app.rec_params['match_threshold'] = int(value)
+
+    def update_card_min_area_label(self, value):
+        """Update the card_min_area_label with current spinbox value."""
+        self.card_min_area_label.config(text=f"Min. Card Area: {value}")
+        self.app.rec_params['card_min_area'] = int(value)
+
+    def update_card_max_area_label(self, value):
+        """Update the card_max_area_label with current spinbox value."""
+        self.card_max_area_label.config(text=f"Max. Card Area: {value}")
+        self.app.rec_params['card_max_area'] = int(value)
+
 
     #Tkinter isn't thread safe, so we need to schedule an update to the image in the main thread
     def display_image(self, img):
@@ -608,12 +638,12 @@ class UI:
             self.scale_y = frame.shape[0] / self.video_height  # Original height / Display height
 
     def display_match(self, match_img_path):
-        if self.matched_image_path:
-            self.match_label.config(text=f"Matched {match_img_path}")
+        if match_img_path:
+            # self.match_label.config(text=f"Matched {match_img_path}")
             self.log_msg(f"Image match detected - {match_img_path}")
             self.root.after(1000, self.clear_match_label)
 
-            image = Image.open(self.matched_image_path)
+            image = Image.open(match_img_path)
             image_resized = image.resize((self.card_width, self.card_height), Image.LANCZOS)
             #image_resized = image #debugging scaling
             photo = ImageTk.PhotoImage(image=image_resized)
@@ -623,7 +653,7 @@ class UI:
             # Save the high-res matched image to a file for OBS to import
             export_path = os.path.join(os.path.dirname(__file__), "obs_export_image.png")
             image.save(export_path)
-            self.log_msg(f"Saved high-res matched image to {export_path}")
+            # self.log_msg(f"Saved high-res matched image to {export_path}")
 
     def clear_match_label(self):
         self.match_label.config(text="")

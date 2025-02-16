@@ -5,7 +5,9 @@ from pygrabber.dshow_graph import FilterGraph
 
 import threading
 import queue
+import os
 
+import utils.const as const
 from ui.ui_class import UI
 from image_matcher.detect_image import find_cards
 
@@ -34,7 +36,9 @@ class NetReadyEyesApp():
             "offset_c": 5,
             "kernel_size": (5,5),
             "match_threshold": 20,
-            "stddev": 0
+            "stddev": 0,
+            "card_min_area": 60000,
+            "card_max_area": 80000
         }
 
         self.thresh_max_value = 255
@@ -104,7 +108,8 @@ class NetReadyEyesApp():
         """ Wait for matching results from the recognition queue and display them """
         try:
             while not self.recognition_queue.empty():
-                match_img_path = self.recognition_queue.get_nowait()
+                match_card_name = self.recognition_queue.get_nowait()
+                match_img_path = os.path.join(const.HIGH_RES_DIR, match_card_name)
                 if match_img_path:
                     self.ui.display_match(match_img_path)
 

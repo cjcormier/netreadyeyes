@@ -4,7 +4,7 @@ from PIL import Image
 
 def convert_image_to_opencv(image):
     # If the input image is a PIL Image, convert it to a NumPy array
-    if is_pil(image):  
+    if isinstance(image, Image.Image):
         print(f"image is a PIL Image, converting to opencv - aka NumPy array")
         image = np.array(image)
     elif is_opencv(image):
