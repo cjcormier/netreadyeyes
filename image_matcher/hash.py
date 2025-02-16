@@ -122,7 +122,7 @@ def find_minimum_hash_difference(query_image, hash_pool_df, hash_size=32):
     devil_charm_row = hash_pool_df[hash_pool_df['name'].str.startswith('devil_charm.')]
 
     if not devil_charm_row.empty:
-        devil_charm_hash = devil_charm_row['card_hash_%d' % hash_size].values[0]
+        devil_charm_hash = devil_charm_row[f'card_hash_{hash_size}'].values[0]
         
         # Compute Hamming distance
         devil_charm_diff = devil_charm_hash - card_hash
@@ -140,7 +140,7 @@ def find_minimum_hash_difference(query_image, hash_pool_df, hash_size=32):
 
 
     #add a new value in the hash pool to store the difference between the computed hash and each stored hash
-    hash_pool['diff'] = hash_pool['card_hash_%d' % hash_size]
+    hash_pool['diff'] = hash_pool[f'card_hash_{hash_size}']
     # Calculate the Hamming distance between the image hash and eac h hash in the pool
     hash_pool['diff'] = hash_pool['diff'].apply(lambda x: x - card_hash)
 
