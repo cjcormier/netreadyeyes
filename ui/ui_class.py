@@ -42,8 +42,7 @@ class UI:
         #self.display_mode = "thresholding"
         #self.display_mode = "unfiltered contours"
         self.display_mode = "filtered contours"
-        #self.display_mode = "approx contours"
-
+        
         # Coordinates for the ROI (Region of Interest) - where the playing card sized area will be placed
         self.roi_x = 2418  # X coordinate for the top-left corner
         self.roi_y = 846  # Y coordinate for the top-left corner
@@ -106,7 +105,7 @@ class UI:
         # self.detect_mode_combobox = ttk.Combobox(self.control_frame, values=["polygon", "rectangle", "auto"]) 
         self.detect_mode_combobox = ttk.Combobox(self.control_frame, values=["rectangle"]) #rectangle only for now
         self.display_mode_label = ttk.Label(self.control_frame, text="Display Mode:")
-        self.display_mode_combobox = ttk.Combobox(self.control_frame, values=["none", "thresholding", "unfiltered contours", "filtered contours", "approx contours"])
+        self.display_mode_combobox = ttk.Combobox(self.control_frame, values=["none", "thresholding", "unfiltered contours", "filtered contours"])
         self.toggle_video_button = ttk.Button(self.control_frame, text="Start video source", command=self.toggle_video_source, bootstyle=SUCCESS)
         self.select_button = ttk.Button(self.control_frame, text="Change Image Folder", command=self.select_image_folder)
         self.folder_label = ttk.Label(self.control_frame, text=f"Current: {self.low_res_image_folder}")
@@ -653,7 +652,7 @@ class UI:
             # Save the high-res matched image to a file for OBS to import
             export_path = os.path.join(os.path.dirname(__file__), "obs_export_image.png")
             image.save(export_path)
-            # self.log_msg(f"Saved high-res matched image to {export_path}")
+            self.log_msg(f"Saved high-res matched image to {export_path}")
 
     def clear_match_label(self):
         self.match_label.config(text="")
