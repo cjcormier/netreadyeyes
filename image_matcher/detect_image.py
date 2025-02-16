@@ -56,7 +56,7 @@ def find_cards(query_image,
 
     print(f"found {len(card_sized_contours)} card sized boxes in this image")
 
-    for n, contour in enumerate(card_sized_contours):
+    for contour in card_sized_contours:
 
         rectangle_points = _get_rectangle_points_from_contour(contour)
         card_image = _four_point_transform(query_image, rectangle_points)
