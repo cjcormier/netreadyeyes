@@ -525,6 +525,8 @@ class UI:
 
 
     def get_roi_frame(self):
+        if self.video_source is None:
+             return None
         ret, frame = self.video_source.read()
         if ret:
             roi_x_int = int(self.roi_x)
@@ -544,6 +546,9 @@ class UI:
         # print(f"Time elapsed since last update: {frame_time:.4f} seconds")
 
         start_time = time.time()  # Start the timer
+
+        if self.video_source is None:
+            return
 
         ret, frame = self.video_source.read()
 

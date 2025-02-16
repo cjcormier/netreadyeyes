@@ -43,7 +43,7 @@ def compute_image_hash(image, hash_size=32):
     """
     #image_path should be a path to a png or jpg image
     try:
-        image_hash = ih.phash(image, hash_size=hash_size).hash.flatten()
+        image_hash = ih.phash(image, hash_size=hash_size)
         return (image, image_hash)
     except Exception as e:
         print(f"Error processing {image}: {e}")
@@ -112,24 +112,24 @@ def find_minimum_hash_difference(query_image, hash_pool_df, hash_size=32):
         print("Error: compute_image_hash returned None")  # Debugging
         return None, None
     else:
-        print(f"card_hash for the query_image = {hash_to_hex(card_hash)}")
+        print(f"card_hash for the query_image = {card_hash}")
     
     hash_pool = pd.DataFrame(hash_pool_df)
 
     # ///////// DEBUGGING DEVIL CHARM SPECIFICALLY
 
     # Find the row where 'card_name' matches 'devil_charm.png'
-    devil_charm_row = hash_pool_df[hash_pool_df['name'] == 'devil_charm.png']
+    devil_charm_row = hash_pool_df[hash_pool_df['name'].str.startswith('devil_charm.')]
 
     if not devil_charm_row.empty:
-        devil_charm_hash = devil_charm_row['card_hash_%d' % hash_size].values[0]
+        devil_charm_hash = devil_charm_row[f'card_hash_{hash_size}'].values[0]
         
         # Compute Hamming distance
-        devil_charm_diff = np.count_nonzero(devil_charm_hash != card_hash)
+        devil_charm_diff = devil_charm_hash - card_hash
 
         print(f"\nComparing query image to 'devil_charm.png':")
-        print(f"Query Hash (Hex): {hash_to_hex(card_hash)}")
-        print(f"Devil Charm Hash (Hex): {hash_to_hex(devil_charm_hash)}")
+        print(f"Query Hash (Hex): {card_hash}")
+        print(f"Devil Charm Hash (Hex): {devil_charm_hash}")
         print(f"Hamming Distance: {devil_charm_diff}\n")
         # Print bitwise differences
        
@@ -140,18 +140,10 @@ def find_minimum_hash_difference(query_image, hash_pool_df, hash_size=32):
 
 
     #add a new value in the hash pool to store the difference between the computed hash and each stored hash
-    hash_pool['diff'] = hash_pool['card_hash_%d' % hash_size]
+    hash_pool['diff'] = hash_pool[f'card_hash_{hash_size}']
     # Calculate the Hamming distance between the image hash and eac h hash in the pool
-    hash_pool['diff'] = hash_pool['diff'].apply(lambda x: np.count_nonzero(x != card_hash))
+    hash_pool['diff'] = hash_pool['diff'].apply(lambda x: x - card_hash)
 
     # Return the row with the smallest hash difference and the minimum difference value
-    return hash_pool[hash_pool['diff'] == min(hash_pool['diff'])].iloc[0], \
-           min(hash_pool['diff'])
-
-def hash_to_hex(hash_array):
-    """Convert a boolean or binary NumPy array to a hex string."""
-    # Ensure it's a NumPy array of 0s and 1s
-    binary_str = ''.join(str(int(b)) for b in hash_array.flatten())  
-    # Convert binary string to hex
-    hex_str = f"{int(binary_str, 2):0{len(binary_str) // 4}X}"  
-    return hex_str
+    minimum = hash_pool['diff'].min()
+    return hash_pool[hash_pool['diff'] == minimum].iloc[0], minimum
