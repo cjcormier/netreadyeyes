@@ -32,20 +32,20 @@ def find_cards(query_image,
     # Find contours
     contours,hier = cv2.findContours(thresh_image,mode,cv2.CHAIN_APPROX_SIMPLE)
 
+    # filter the contours based on the area and area-to-perimeter ratio
+    # (cards luckily have a consistent shape)
+    # filtered_contours = filter_contours(contours)
+    filtered_contours = find_rectangular_contours(contours, hier)
+    card_sized_contours = find_rectangular_contours(contours, hier, (rec_params['card_min_area'], rec_params['card_max_area']))
+
     # display contours that we found
     if display_mode == "unfiltered contours" and display_image:
         image_contours = query_image.copy()
         image_rgb = cv2.cvtColor(image_contours, cv2.COLOR_BGR2RGB)
-        cv2.drawContours(image_rgb, contours, -1, (0, 255, 0), 2)
+        cv2.drawContours(image_rgb, contours, -1, (255, 0, 0), 2)
+        cv2.drawContours(image_rgb, filtered_contours, -1, (0, 0, 255), 2)
+        cv2.drawContours(image_rgb, card_sized_contours, -1, (0, 255, 0), 2)
         display_image(image_rgb)
-
-    # filter the contours based on the area and area-to-perimeter ratio 
-    # (cards luckily have a consistent shape)
-    # filtered_contours = filter_contours(contours)
-    filtered_contours = find_rectangular_contours(contours, hier)
-    card_sized_contours = filter_contour_size(filtered_contours,
-                                              rec_params['card_min_area'],
-                                              rec_params['card_max_area'])
 
     # display filtered contours
     if display_mode == "filtered contours" and display_image:
@@ -57,7 +57,7 @@ def find_cards(query_image,
     print(f"found {len(card_sized_contours)} card sized boxes in this image")
 
     for n, contour in enumerate(card_sized_contours):
-        
+
         rectangle_points = _get_rectangle_points_from_contour(contour)
         card_image = _four_point_transform(query_image, rectangle_points)
         card, diff = find_minimum_hash_difference(card_image, hash_pool)
@@ -67,7 +67,7 @@ def find_cards(query_image,
             recognition_queue.put(card['name']) 
 
 
-    # card_sized_imgs = extract_card_bounding_boxes(query_image, thresh_image, 
+    # card_sized_imgs = extract_card_bounding_boxes(query_image, thresh_image,
     #                                               rec_params,
     #                                               display_mode, display_image)
 
@@ -115,8 +115,8 @@ def _possible_match(diff):
 #     return rotated_imgs
 
 
-def find_rectangular_contours(contours, hierarchy):
-    print("in find_rectangular_contours")
+def find_rectangular_contours(contours, hierarchy, size_bounds=None):
+    print(f"in find_rectangular_contours: {size_bounds}")
     stack = _get_stack(hierarchy)
     rectangular_contours = []
     while len(stack) > 0:
@@ -126,23 +126,19 @@ def find_rectangular_contours(contours, hierarchy):
             stack.append((i_next, hierarchy[0][i_next]))
         contour, area = _find_bounded_contour(contours, i_contour)
         if _threshold_size_bounded_by(area) and _is_rectangular(contour):
-            rectangular_contours.append(contour)
-        elif i_child != -1:
+            if size_bounds is not None:
+                area = cv2.contourArea(contour)
+                min_area, max_area = size_bounds
+                if min_area < area < max_area:
+                    rectangular_contours.append(contour)
+                    continue
+            else:
+                rectangular_contours.append(contour)
+                continue
+
+        if i_child != -1:
             stack.append((i_child, hierarchy[0][i_child]))
     return rectangular_contours
-
-
-def filter_contour_size(contours, min_area=1000, max_area=50000):
-    """ Filter contours based on area and area-to-perimeter ratio. """
-    filtered_contours = []
-    
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        
-        if min_area < area < max_area:
-            filtered_contours.append(contour) 
-    
-    return filtered_contours
 
 
 def _get_stack(hierarchy):
@@ -288,8 +284,8 @@ def preprocess_image(image, rec_params=[]):
 def extract_card_bounding_boxes(image, thresh, rec_params,
                                 display_mode=None, display_image=None):
     """ Detect contours, filter them, and get bounding boxes using approxPolyDP. """
-    
-     
+
+
 
     card_images = []
     
