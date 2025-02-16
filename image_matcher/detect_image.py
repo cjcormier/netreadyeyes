@@ -28,11 +28,11 @@ def find_cards(query_image,
                                                   rec_params,
                                                   display_mode, display_image)
 
-    rotation_corrected_imgs = preprocess_rotate(card_sized_imgs)
+    # rotation_corrected_imgs = preprocess_rotate(card_sized_imgs)
 
     print(f"found {len(card_sized_imgs)} card sized boxes in this image")
     
-    for candidate in rotation_corrected_imgs:
+    for candidate in card_sized_imgs
         card, diff = find_minimum_hash_difference(candidate, hash_pool)
         if _possible_match(diff):
 
