@@ -1,4 +1,4 @@
-## netready-eyes Netrunner card recognizer
+## Net-Ready Eyes - Netrunner Card Recognizer
 
 Explanation:
 Webcam Access:
